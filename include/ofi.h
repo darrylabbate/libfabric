@@ -319,7 +319,7 @@ struct ofi_filter {
 };
 
 extern struct ofi_filter prov_log_filter;
-extern struct fi_provider core_prov;
+extern struct fi_provider core_prov, drl_prov;
 extern OFI_THREAD_LOCAL const char *log_prefix;
 
 void ofi_create_filter(struct ofi_filter *filter, const char *env_name);
