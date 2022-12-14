@@ -78,6 +78,12 @@ struct fi_provider core_prov = {
 	.version = OFI_VERSION_DEF_PROV,
 	.fi_version = OFI_VERSION_LATEST
 };
+struct fi_provider drl_prov = {
+	.name = "drl",
+	.version = OFI_VERSION_DEF_PROV,
+	.fi_version = OFI_VERSION_LATEST
+};
+
 
 struct ofi_common_locks common_locks = {
 	.ini_lock = PTHREAD_MUTEX_INITIALIZER,
