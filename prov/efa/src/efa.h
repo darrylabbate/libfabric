@@ -278,5 +278,112 @@ bool efa_use_unsolicited_write_recv()
 	} \
 	field = _val; \
 }
+struct efa_pd {
+	struct ibv_pd ibv_pd;
+	uint16_t pdn;
+};
+
+#define ahnof(ah)	container_of(ah, struct efa_ah, ibv_ah)->ahn
+#define pdnof(pd)	((struct efa_pd *) (pd))->pdn
+
+#define log_ah(prelude, ah)	\
+	DRL_DBG(prelude ": dev_name: %s, AH[%u], PD[%u]\n", (ah)->context->device->dev_name, ahnof(ah), pdnof((ah)->pd))
+
+#define log_mr(prelude, mr)	\
+	DRL_DBG(prelude ": dev_name: %s, MR[%u], lkey[0x%x], PD[%u]\n", (mr)->context->device->dev_name, (mr)->lkey, (mr)->lkey, pdnof((mr)->pd))
+
+#define log_qp(prelude, qp)	\
+	DRL_DBG(prelude ": dev_name: %s, QP[%u], PD[%u]\n", (qp)->context->device->dev_name, (qp)->qp_num, pdnof((qp)->pd))
+
+#define log_op_err(op, _err)	\
+	DRL_DBG(op ": error: %s (%d)\n", fi_strerror(_err), _err);
+
+#define ibv_create_ah(pd, ...) ({	\
+	struct ibv_ah *ah = ibv_create_ah(pd, __VA_ARGS__);	\
+	if (OFI_LIKELY(ah != NULL)) {	\
+		log_ah("ibv_create_ah", ah);	\
+	} else {	\
+		log_op_err("ibv_create_ah", errno);	\
+	}	\
+	ah;	\
+})
+
+#define efadv_create_qp_ex(ctx, attr, ...) ({	\
+	struct ibv_qp *qp_ex = efadv_create_qp_ex(ctx, attr, __VA_ARGS__);	\
+	if (OFI_LIKELY(qp_ex != NULL)) {	\
+		log_qp("efadv_create_qp_ex", qp_ex);	\
+	} else {	\
+		log_op_err("efadv_create_qp_ex", errno);	\
+	}	\
+	qp_ex;	\
+})
+
+#define ibv_create_qp_ex(ctx, attr) ({	\
+	struct ibv_qp *qp_ex = ibv_create_qp_ex(ctx, attr);	\
+	if (OFI_LIKELY(qp_ex != NULL)) {	\
+		log_qp("ibv_create_qp_ex", qp_ex);	\
+	} else {	\
+		log_op_err("ibv_create_qp_ex", errno);	\
+	}	\
+	qp_ex;	\
+})
+
+#define efadv_query_ah(ah, attr, ...) ({	\
+	int _err = efadv_query_ah(ah, attr, __VA_ARGS__);	\
+	if (OFI_LIKELY(!_err)) {	\
+		log_ah("efadv_query_ah", ah);	\
+	} else {	\
+		log_op_err("efadv_query_ah", _err);	\
+	}	\
+	_err;	\
+})
+
+#define ibv_destroy_ah(ah) ({	\
+	int _err = ibv_destroy_ah(ah);	\
+	if (OFI_LIKELY(!_err)) {	\
+		log_ah("ibv_destroy_ah", ah);	\
+	} else {	\
+		log_op_err("ibv_destroy_ah", _err);	\
+	}	\
+	_err; \
+})
+
+#define ibv_destroy_qp(qp) ({	\
+	log_qp("ibv_destroy_qp", qp);	\
+	int _err = ibv_destroy_qp(qp);	\
+	if (OFI_UNLIKELY(_err)) {	\
+		log_op_err("ibv_destroy_qp", _err);	\
+	}	\
+	_err; \
+})
+
+#define drl_ibv_reg_mr(pd, ...) ({	\
+	struct ibv_mr *mr = ibv_reg_mr(pd, __VA_ARGS__);	\
+	if (OFI_LIKELY(mr != NULL)) {	\
+		log_mr("ibv_reg_mr", mr);	\
+	} else {	\
+		log_op_err("ibv_reg_mr", errno);	\
+	}	\
+	mr;	\
+})
+
+#define drl_ibv_reg_dmabuf_mr(pd, ...) ({	\
+	struct ibv_mr *mr = ibv_reg_dmabuf_mr(pd, __VA_ARGS__);	\
+	if (OFI_LIKELY(mr != NULL)) {	\
+		log_mr("ibv_reg_dmabuf_mr", mr);	\
+	} else {	\
+		log_op_err("ibv_reg_dmabuf_mr", errno);	\
+	}	\
+	mr;	\
+})
+
+#define ibv_dereg_mr(mr) ({	\
+	log_mr("ibv_dereg_mr", mr);	\
+	int _err = ibv_dereg_mr(mr);	\
+	if (OFI_UNLIKELY(_err)) {	\
+		log_op_err("ibv_dereg_mr", _err);	\
+	}	\
+	_err;	\
+})
 
 #endif /* EFA_H */

@@ -483,7 +483,7 @@ static inline
 struct ibv_mr *efa_mr_reg_ibv_dmabuf_mr(struct ibv_pd *pd, uint64_t offset,
 					size_t len, uint64_t iova, int fd, int access)
 {
-	return ibv_reg_dmabuf_mr(pd, offset, len, iova, fd, access);
+	return drl_ibv_reg_dmabuf_mr(pd, offset, len, iova, fd, access);
 }
 
 #else
@@ -551,7 +551,40 @@ static struct ibv_mr *efa_mr_reg_ibv_mr(struct efa_mr *efa_mr, struct fi_mr_attr
 					dmabuf_fd, access);
 	}
 
-	return ibv_reg_mr(efa_mr->domain->ibv_pd,
+#if HAVE_NEURON
+	if (efa_mr_is_neuron(efa_mr)) {
+		int dmabuf_fd;
+		uint64_t offset;
+		int ret;
+
+		ret = neuron_get_dmabuf_fd(
+				mr_attr->mr_iov->iov_base,
+				mr_attr->mr_iov->iov_len,
+				&dmabuf_fd,
+				&offset);
+
+		if (ret == FI_SUCCESS) {
+			/* Success => invoke ibv_reg_dmabuf_mr */
+			return efa_mr_reg_ibv_dmabuf_mr(
+					efa_mr->domain->ibv_pd, 0,
+					mr_attr->mr_iov->iov_len,
+					(uint64_t)mr_attr->mr_iov->iov_base,
+					dmabuf_fd, access);
+		} else if (ret == -FI_EOPNOTSUPP) {
+			/* Protocol not availabe => fallback */
+			EFA_INFO(FI_LOG_MR,
+				"Unable to get dmabuf fd for Neuron device buffer, "
+				"Fall back to ibv_reg_mr\n");
+			return drl_ibv_reg_mr(
+				efa_mr->domain->ibv_pd,
+				(void *)mr_attr->mr_iov->iov_base,
+				mr_attr->mr_iov->iov_len, access);
+		}
+		return NULL;
+	}
+#endif
+
+	return drl_ibv_reg_mr(efa_mr->domain->ibv_pd,
 			(void *)mr_attr->mr_iov->iov_base,
 			mr_attr->mr_iov->iov_len, access);
 }

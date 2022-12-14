@@ -127,23 +127,23 @@ static inline void efa_hmem_info_check_p2p_support_cuda(struct efa_hmem_info *in
 #if HAVE_EFA_DMABUF_MR
 	ret = cuda_get_dmabuf_fd(ptr, len, &dmabuf_fd, &dmabuf_offset);
 	if (ret == FI_SUCCESS) {
-		ibv_mr = ibv_reg_dmabuf_mr(g_device_list[0].ibv_pd, dmabuf_offset,
+		ibv_mr = drl_ibv_reg_dmabuf_mr(g_device_list[0].ibv_pd, dmabuf_offset,
 					   len, (uint64_t)ptr, dmabuf_fd, ibv_access);
 		(void)cuda_put_dmabuf_fd(dmabuf_fd);
 		if (!ibv_mr) {
 			EFA_INFO(FI_LOG_CORE,
 				"Unable to register CUDA device buffer via dmabuf: %s. "
 				"Fall back to ibv_reg_mr\n", fi_strerror(-errno));
-			ibv_mr = ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
+			ibv_mr = drl_ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
 		}
 	} else {
 		EFA_INFO(FI_LOG_CORE,
 			"Unable to retrieve dmabuf fd of CUDA device buffer: %d. "
 			"Fall back to ibv_reg_mr\n", ret);
-		ibv_mr = ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
+		ibv_mr = drl_ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
 	}
 #else
-	ibv_mr = ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
+	ibv_mr = drl_ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
 #endif
 
 	if (!ibv_mr) {
@@ -200,17 +200,17 @@ static inline void efa_hmem_info_check_p2p_support_neuron(struct efa_hmem_info *
 #if HAVE_EFA_DMABUF_MR
 	ret = neuron_get_dmabuf_fd(ptr, (uint64_t)len, &dmabuf_fd, &offset);
 	if (ret == FI_SUCCESS) {
-		ibv_mr = ibv_reg_dmabuf_mr(
+		ibv_mr = drl_ibv_reg_dmabuf_mr(
 					g_device_list[0].ibv_pd, offset,
 					len, (uint64_t)ptr, dmabuf_fd, ibv_access);
 	} else if (ret == -FI_EOPNOTSUPP) {
 		EFA_INFO(FI_LOG_MR,
 			"Unable to retrieve dmabuf fd of Neuron device buffer, "
 			"Fall back to ibv_reg_mr\n");
-		ibv_mr = ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
+		ibv_mr = drl_ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
 	}
 #else
-	ibv_mr = ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
+	ibv_mr = drl_ibv_reg_mr(g_device_list[0].ibv_pd, ptr, len, ibv_access);
 #endif
 
 	if (!ibv_mr) {
