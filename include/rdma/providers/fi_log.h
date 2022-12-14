@@ -131,4 +131,10 @@ void fi_log(const struct fi_provider *prov, enum fi_log_level level,
 }
 #endif
 
+#define DRL_DBG(...) \
+	FI_DBG(&drl_prov, FI_LOG_CORE, __VA_ARGS__)
+
+#define DRL_INFO(...) \
+	FI_INFO(&drl_prov, FI_LOG_CORE, __VA_ARGS__)
+
 #endif /* FI_LOG_H */
