@@ -37,6 +37,48 @@ LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(EFA_TP_PROV, post_wr_id, EFA_TP_PROV,
 	LTTNG_UST_TP_ARGS(X_PKT_ARGS))
 LTTNG_UST_TRACEPOINT_LOGLEVEL(EFA_TP_PROV, post_recv, LTTNG_UST_TRACEPOINT_LOGLEVEL_INFO)
 
+#include <include/ofi_lock.h>
+
+#define MUTEX_ARGS \
+	ofi_mutex_t *, mutex_arg
+
+#if ENABLE_DEBUG
+
+#define MUTEX_FIELDS \
+	lttng_ust_field_integer_hex (void *, mutex,  &mutex_arg->impl) \
+	lttng_ust_field_integer     (int,    in_use,  mutex_arg->in_use)
+
+#else
+
+#define MUTEX_FIELDS \
+	lttng_ust_field_integer_hex(ofi_mutex_t *, ofi_mutex, mutex_arg)
+
+#endif
+
+LTTNG_UST_TRACEPOINT_EVENT_CLASS(EFA_TP_PROV, ofi_mutex,
+	LTTNG_UST_TP_ARGS(MUTEX_ARGS),
+	LTTNG_UST_TP_FIELDS(MUTEX_FIELDS))
+
+LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(EFA_TP_PROV, ofi_mutex, EFA_TP_PROV,
+	mutex_lock_begin,
+	LTTNG_UST_TP_ARGS(MUTEX_ARGS))
+LTTNG_UST_TRACEPOINT_LOGLEVEL(EFA_TP_PROV, mutex_lock_begin, LTTNG_UST_TRACEPOINT_LOGLEVEL_INFO)
+
+LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(EFA_TP_PROV, ofi_mutex, EFA_TP_PROV,
+	mutex_lock_end,
+	LTTNG_UST_TP_ARGS(MUTEX_ARGS))
+LTTNG_UST_TRACEPOINT_LOGLEVEL(EFA_TP_PROV, mutex_lock_end, LTTNG_UST_TRACEPOINT_LOGLEVEL_INFO)
+
+LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(EFA_TP_PROV, ofi_mutex, EFA_TP_PROV,
+	mutex_unlock_begin,
+	LTTNG_UST_TP_ARGS(MUTEX_ARGS))
+LTTNG_UST_TRACEPOINT_LOGLEVEL(EFA_TP_PROV, mutex_unlock_begin, LTTNG_UST_TRACEPOINT_LOGLEVEL_INFO)
+
+LTTNG_UST_TRACEPOINT_EVENT_INSTANCE(EFA_TP_PROV, ofi_mutex, EFA_TP_PROV,
+	mutex_unlock_end,
+	LTTNG_UST_TP_ARGS(MUTEX_ARGS))
+LTTNG_UST_TRACEPOINT_LOGLEVEL(EFA_TP_PROV, mutex_unlock_end, LTTNG_UST_TRACEPOINT_LOGLEVEL_INFO)
+
 #endif /* _EFA_TP_DEF_H */
 
 #include <lttng/tracepoint-event.h>
