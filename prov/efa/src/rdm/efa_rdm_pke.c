@@ -363,9 +363,12 @@ ssize_t efa_rdm_pke_sendv(struct efa_rdm_pke **pkt_entry_vec,
 	struct ibv_sge sg_list[2];  /* efa device support up to 2 iov */
 	struct ibv_data_buf inline_data_list[2];
 	int ret = 0, pkt_idx, iov_cnt;
+	struct fid_ep *fid_ep;
+	struct timespec start, end, result;
 
 	assert(pkt_entry_cnt);
 	ep = pkt_entry_vec[0]->ep;
+	fid_ep = &ep->base_ep.util_ep.ep_fid;
 	assert(ep);
 
 	assert(pkt_entry_vec[0]->ope);
@@ -378,6 +381,15 @@ ssize_t efa_rdm_pke_sendv(struct efa_rdm_pke **pkt_entry_vec,
 	assert(conn && conn->ep_addr);
 
 	qp = ep->base_ep.qp;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	timespec_diff(&fid_ep->libfabric_start, &end, &result);
+	if (fid_ep->msg_count < fid_ep->iterations + fid_ep->warmup_iterations)
+		if (fid_ep->msg_count >= fid_ep->warmup_iterations)
+			fid_ep->libfabric_start_to_rdma_time[fid_ep->msg_count - fid_ep->warmup_iterations] = result.tv_nsec;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
 	if (!ep->base_ep.is_wr_started) {
 		ibv_wr_start(qp->ibv_qp_ex);
 		ep->base_ep.is_wr_started = true;
@@ -447,6 +459,14 @@ ssize_t efa_rdm_pke_sendv(struct efa_rdm_pke **pkt_entry_vec,
 		ret = ibv_wr_complete(qp->ibv_qp_ex);
 		ep->base_ep.is_wr_started = false;
 	}
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	timespec_diff(&start, &end, &result);
+	if (fid_ep->msg_count < fid_ep->iterations + fid_ep->warmup_iterations)
+		if (fid_ep->msg_count >= fid_ep->warmup_iterations)
+			fid_ep->rdma_core_time[fid_ep->msg_count - fid_ep->warmup_iterations] = result.tv_nsec;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &fid_ep->libfabric_start);
 
 	if (OFI_UNLIKELY(ret)) {
 		return ret;
@@ -544,8 +564,11 @@ int efa_rdm_pke_write(struct efa_rdm_pke *pkt_entry)
 	uint64_t remote_buf;
 	size_t remote_key;
 	int err = 0;
+	struct fid_ep *fid_ep;
+	struct timespec start, end, result;
 
 	ep = pkt_entry->ep;
+	fid_ep = &ep->base_ep.util_ep.ep_fid;
 	assert(ep);
 	txe = pkt_entry->ope;
 
@@ -563,6 +586,15 @@ int efa_rdm_pke_write(struct efa_rdm_pke *pkt_entry)
 		pkt_entry->flags |= EFA_RDM_PKE_LOCAL_WRITE;
 
 	qp = ep->base_ep.qp;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	timespec_diff(&fid_ep->libfabric_start, &end, &result);
+	if (fid_ep->rma_count < fid_ep->iterations + fid_ep->warmup_iterations)
+		if (fid_ep->rma_count >= fid_ep->warmup_iterations)
+			fid_ep->libfabric_start_to_rdma_time[fid_ep->rma_count - fid_ep->warmup_iterations] = result.tv_nsec;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
 	if (!ep->base_ep.is_wr_started) {
 		ibv_wr_start(qp->ibv_qp_ex);
 		ep->base_ep.is_wr_started = true;
@@ -601,6 +633,14 @@ int efa_rdm_pke_write(struct efa_rdm_pke *pkt_entry)
 		err = ibv_wr_complete(qp->ibv_qp_ex);
 		ep->base_ep.is_wr_started = false;
 	}
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+	timespec_diff(&start, &end, &result);
+	if (fid_ep->rma_count < fid_ep->iterations + fid_ep->warmup_iterations)
+		if (fid_ep->rma_count >= fid_ep->warmup_iterations)
+			fid_ep->rdma_core_time[fid_ep->rma_count - fid_ep->warmup_iterations] = result.tv_nsec;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &fid_ep->libfabric_start);
 
 	if (OFI_UNLIKELY(err))
 		return err;
