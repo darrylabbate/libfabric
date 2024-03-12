@@ -448,7 +448,7 @@ class ClientServerTest:
         client_timed_out = False
         output = ""
         try:
-            output, _ = process.communicate(timeout=self._timeout)
+            output, _ = process.communicate()
             if client_output_file:
                 with open(client_output_file, "w") as f:
                     f.write(output)

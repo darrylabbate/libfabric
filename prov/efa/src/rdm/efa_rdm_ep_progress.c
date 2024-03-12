@@ -255,7 +255,6 @@ void efa_rdm_ep_check_peer_backoff_timer(struct efa_rdm_ep *ep)
 }
 
 
-
 /**
  * @brief post a linked list of packets
  * 

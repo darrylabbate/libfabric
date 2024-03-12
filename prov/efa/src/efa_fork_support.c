@@ -106,7 +106,7 @@ static int efa_fork_support_is_enabled(struct fid_domain *domain_fid)
 		return -FI_ENOMEM;
 
 
-	mr = ibv_reg_mr(efa_domain->ibv_pd, buf, page_size, 0);
+	mr = drl_ibv_reg_mr(efa_domain->ibv_pd, buf, page_size, 0);
 	if (mr == NULL) {
 		ret = errno;
 		goto out;
