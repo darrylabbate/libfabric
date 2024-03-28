@@ -250,15 +250,12 @@ fi_addr_t efa_rdm_cq_determine_addr_from_ibv_cq(struct ibv_cq_ex *ibv_cqx, enum 
  * RDMA Core error codes (#EFA_IO_COMP_STATUSES) for the sake of more accurate
  * error reporting
  */
-static int efa_rdm_cq_get_prov_errno(struct ibv_cq_ex *ibv_cq_ex) {
+static int efa_rdm_cq_get_prov_errno(struct ibv_cq_ex *ibv_cq_ex, struct efa_rdm_pke *pke) {
 	uint32_t vendor_err = ibv_wc_read_vendor_err(ibv_cq_ex);
-	struct efa_rdm_pke *pkt_entry = (void *) (uintptr_t) ibv_cq_ex->wr_id;
 	struct efa_rdm_peer *peer;
-	struct efa_rdm_ep *ep;
 
-	if (OFI_LIKELY(pkt_entry && pkt_entry->addr)) {
-		ep = pkt_entry->ep;
-		peer = efa_rdm_ep_get_peer(ep, pkt_entry->addr);
+	if (OFI_LIKELY(pke && pke->addr)) {
+		peer = efa_rdm_ep_get_peer(pke->ep, pke->addr);
 	} else {
 		return vendor_err;
 	}
@@ -276,6 +273,48 @@ static int efa_rdm_cq_get_prov_errno(struct ibv_cq_ex *ibv_cq_ex) {
 	return vendor_err;
 }
 
+static inline void efa_rdm_cq_handle_ibv_cq_ex_status(struct ibv_cq_ex *cq, struct efa_rdm_pke *pke)
+{
+	enum efa_errno prov_errno = efa_rdm_cq_get_prov_errno(cq, pke);
+	switch (ibv_wc_read_opcode(cq)) {
+	case IBV_WC_SEND:
+	case IBV_WC_RDMA_WRITE:
+	case IBV_WC_RDMA_READ:
+		efa_rdm_pke_handle_tx_error(pke, FI_EIO, prov_errno);
+		break;
+	case IBV_WC_RECV:
+	case IBV_WC_RECV_RDMA_WITH_IMM:
+		efa_rdm_pke_handle_rx_error(pke, FI_EIO, prov_errno);
+		break;
+	default:
+		break;
+		// TODO
+		// EFA_WARN(FI_LOG_EP_CTRL, "Unhandled op code %d\n", opcode);
+		// assert(0 && "Unhandled op code");
+	}
+	return;
+}
+
+#define IBV_WC_OPS_DEF(_) _(SEND) _(RDMA_WRITE) _(RDMA_READ) _(RECV) _(RECV_RDMA_WITH_IMM)
+
+#define IBV_WC_OPS_LABEL_ENUM(op)	[IBV_WC_##op] = &&L_IBV_WC_##op,
+
+#define POLL_CQ_OP_PRELUDE(cq) do {					\
+	pkt_entry = (void *)(uintptr_t) (cq)->wr_id;			\
+	efa_rdm_tracepoint(poll_cq, (size_t) pkt_entry);		\
+	if (OFI_UNLIKELY((cq)->status)) {				\
+		efa_rdm_cq_handle_ibv_cq_ex_status(cq, pkt_entry);	\
+		goto L_end_poll;					\
+	}								\
+} while (0)
+
+#define POLL_CQ_DISPATCH(cq) do {					\
+	if (OFI_UNLIKELY(++i == cqe_to_process))			\
+		goto L_end_poll;					\
+	if (OFI_UNLIKELY((err = ibv_next_poll(cq))))			\
+		goto L_next_poll_err;					\
+	goto *dispatch_labels[ibv_wc_read_opcode(cq)];			\
+} while (0)
 
 /**
  * @brief poll rdma-core cq and process the cq entry
@@ -286,115 +325,82 @@ static int efa_rdm_cq_get_prov_errno(struct ibv_cq_ex *ibv_cq_ex) {
  */
 void efa_rdm_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq)
 {
-	bool should_end_poll = false;
-	/* Initialize an empty ibv_poll_cq_attr struct for ibv_start_poll.
-	 * EFA expects .comp_mask = 0, or otherwise returns EINVAL.
-	 */
-	struct ibv_poll_cq_attr poll_cq_attr = {.comp_mask = 0};
-	struct efa_av *efa_av;
-	struct efa_rdm_pke *pkt_entry;
-	ssize_t err;
-	int opcode;
+	register struct efa_rdm_pke *pkt_entry = NULL;
+	register struct ibv_cq_ex *cq_ex = ibv_cq->ibv_cq_ex;
+	struct ibv_poll_cq_attr poll_cq_attr = { .comp_mask = 0 };
+	ssize_t err = 0;
 	size_t i = 0;
-	int prov_errno;
-	struct efa_rdm_ep *ep = NULL;
 	struct fi_cq_err_entry err_entry;
 	struct efa_rdm_cq *efa_rdm_cq;
 
-	/* Call ibv_start_poll only once */
-	err = ibv_start_poll(ibv_cq->ibv_cq_ex, &poll_cq_attr);
-	should_end_poll = !err;
+	static void *dispatch_labels[] = {
+		IBV_WC_OPS_DEF(IBV_WC_OPS_LABEL_ENUM)
+	};
 
-	while (!err) {
-		pkt_entry = (void *)(uintptr_t)ibv_cq->ibv_cq_ex->wr_id;
-		ep = pkt_entry->ep;
-		assert(ep);
-		efa_av = ep->base_ep.av;
-		efa_rdm_tracepoint(poll_cq, (size_t) ibv_cq->ibv_cq_ex->wr_id);
-		opcode = ibv_wc_read_opcode(ibv_cq->ibv_cq_ex);
-		if (ibv_cq->ibv_cq_ex->status) {
-			prov_errno = efa_rdm_cq_get_prov_errno(ibv_cq->ibv_cq_ex);
-			switch (opcode) {
-			case IBV_WC_SEND: /* fall through */
-			case IBV_WC_RDMA_WRITE: /* fall through */
-			case IBV_WC_RDMA_READ:
-				efa_rdm_pke_handle_tx_error(pkt_entry, FI_EIO, prov_errno);
-				break;
-			case IBV_WC_RECV: /* fall through */
-			case IBV_WC_RECV_RDMA_WITH_IMM:
-				efa_rdm_pke_handle_rx_error(pkt_entry, FI_EIO, prov_errno);
-				break;
-			default:
-				EFA_WARN(FI_LOG_EP_CTRL, "Unhandled op code %d\n", opcode);
-				assert(0 && "Unhandled op code");
-			}
-			break;
-		}
-		switch (opcode) {
-		case IBV_WC_SEND:
+	if (OFI_UNLIKELY((err = ibv_start_poll(cq_ex, &poll_cq_attr))))
+		goto L_start_poll_err;
+	goto *dispatch_labels[ibv_wc_read_opcode(cq_ex)];
+
+L_IBV_WC_SEND:
+	POLL_CQ_OP_PRELUDE(cq_ex);
 #if ENABLE_DEBUG
-			ep->send_comps++;
+	pkt_entry->ep->send_comps++;
 #endif
-			efa_rdm_pke_handle_send_completion(pkt_entry);
-			break;
-		case IBV_WC_RECV:
-			pkt_entry->addr = efa_av_reverse_lookup_rdm(efa_av, ibv_wc_read_slid(ibv_cq->ibv_cq_ex),
-								ibv_wc_read_src_qp(ibv_cq->ibv_cq_ex), pkt_entry);
+	efa_rdm_pke_handle_send_completion(pkt_entry);
+	POLL_CQ_DISPATCH(cq_ex);
 
-			if (pkt_entry->addr == FI_ADDR_NOTAVAIL) {
-				pkt_entry->addr = efa_rdm_cq_determine_addr_from_ibv_cq(ibv_cq->ibv_cq_ex, ibv_cq->ibv_cq_ex_type);
-			}
+L_IBV_WC_RDMA_WRITE:
+L_IBV_WC_RDMA_READ:
+	POLL_CQ_OP_PRELUDE(cq_ex);
+	efa_rdm_pke_handle_rma_completion(pkt_entry);
+	POLL_CQ_DISPATCH(cq_ex);
 
-			pkt_entry->pkt_size = ibv_wc_read_byte_len(ibv_cq->ibv_cq_ex);
-			assert(pkt_entry->pkt_size > 0);
-			efa_rdm_pke_handle_recv_completion(pkt_entry);
-#if ENABLE_DEBUG
-			ep->recv_comps++;
-#endif
-			break;
-		case IBV_WC_RDMA_READ:
-		case IBV_WC_RDMA_WRITE:
-			efa_rdm_pke_handle_rma_completion(pkt_entry);
-			break;
-		case IBV_WC_RECV_RDMA_WITH_IMM:
-			efa_rdm_cq_proc_ibv_recv_rdma_with_imm_completion(
-				FI_REMOTE_CQ_DATA | FI_RMA | FI_REMOTE_WRITE,
-				pkt_entry, ibv_cq->ibv_cq_ex);
-			break;
-		default:
-			EFA_WARN(FI_LOG_EP_CTRL,
-				"Unhandled cq type\n");
-			assert(0 && "Unhandled cq type");
-		}
+L_IBV_WC_RECV:
+	POLL_CQ_OP_PRELUDE(cq_ex);
+	pkt_entry->addr = efa_av_reverse_lookup_rdm(pkt_entry->ep->base_ep.av, ibv_wc_read_slid(cq_ex),
+						ibv_wc_read_src_qp(cq_ex), pkt_entry);
 
-		i++;
-		if (i == cqe_to_process) {
-			break;
-		}
-
-		/*
-		 * ibv_next_poll MUST be call after the current WC is fully processed,
-		 * which prevents later calls on ibv_cq_ex from reading the wrong WC.
-		 */
-		err = ibv_next_poll(ibv_cq->ibv_cq_ex);
+	if (pkt_entry->addr == FI_ADDR_NOTAVAIL) {
+		pkt_entry->addr = efa_rdm_cq_determine_addr_from_ibv_cq(cq_ex, ibv_cq->ibv_cq_ex_type);
 	}
 
-	if (err && err != ENOENT) {
-		err = err > 0 ? err : -err;
-		prov_errno = efa_rdm_cq_get_prov_errno(ibv_cq->ibv_cq_ex);
-		EFA_WARN(FI_LOG_CQ, "Unexpected error when polling ibv cq, err: %s (%zd) prov_errno: %s (%d)\n", fi_strerror(err), err, efa_strerror(prov_errno), prov_errno);
-		efa_show_help(prov_errno);
+	pkt_entry->pkt_size = ibv_wc_read_byte_len(cq_ex);
+	assert(pkt_entry->pkt_size > 0);
+	efa_rdm_pke_handle_recv_completion(pkt_entry);
+#if ENABLE_DEBUG
+	pkt_entry->ep->recv_comps++;
+#endif
+	POLL_CQ_DISPATCH(cq_ex);
+
+L_IBV_WC_RECV_RDMA_WITH_IMM:
+	POLL_CQ_OP_PRELUDE(cq_ex);
+	efa_rdm_cq_proc_ibv_recv_rdma_with_imm_completion(
+		FI_REMOTE_CQ_DATA | FI_RMA | FI_REMOTE_WRITE,
+		pkt_entry, cq_ex);
+	POLL_CQ_DISPATCH(cq_ex);
+
+L_next_poll_err:
+	ibv_end_poll(cq_ex);
+L_start_poll_err:
+	if (OFI_UNLIKELY(err != ENOENT)) {
 		err_entry = (struct fi_cq_err_entry) {
-			.err = err,
-			.prov_errno = prov_errno,
+			.err = err > 0 ? err : -err,
+			.prov_errno = efa_rdm_cq_get_prov_errno(cq_ex, pkt_entry),
 			.op_context = NULL
 		};
+		EFA_WARN(FI_LOG_CQ, "Unexpected error when polling ibv cq. err: %s (%d), prov_errno: %s (%d)\n",
+				fi_strerror(err_entry.err), err_entry.err,
+				efa_strerror(err_entry.prov_errno), err_entry.prov_errno);
+		efa_show_help(err_entry.prov_errno);
 		efa_rdm_cq = container_of(ibv_cq, struct efa_rdm_cq, ibv_cq);
 		ofi_cq_write_error(&efa_rdm_cq->util_cq, &err_entry);
 	}
+	return;
 
-	if (should_end_poll)
-		ibv_end_poll(ibv_cq->ibv_cq_ex);
+L_end_poll:
+	ibv_end_poll(cq_ex);
+	return;
+
 }
 
 static ssize_t efa_rdm_cq_readfrom(struct fid_cq *cq_fid, void *buf, size_t count, fi_addr_t *src_addr)
