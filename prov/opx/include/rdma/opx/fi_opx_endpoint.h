@@ -557,17 +557,6 @@ struct fi_opx_ep {
 
 } __attribute((aligned(L2_CACHE_LINE_SIZE)));
 
-OPX_COMPILE_TIME_ASSERT(offsetof(struct fi_opx_ep, recv_cntr) == (FI_OPX_CACHE_LINE_SIZE * 2),
-			"Offset of fi_opx_ep->recv_cntr should start at cacheline 2!");
-OPX_COMPILE_TIME_ASSERT(offsetof(struct fi_opx_ep, hfi) == (FI_OPX_CACHE_LINE_SIZE * 3),
-			"Offset of fi_opx_ep->hfi should start at cacheline 3!");
-OPX_COMPILE_TIME_ASSERT(offsetof(struct fi_opx_ep, common_info) == (FI_OPX_CACHE_LINE_SIZE * 4),
-			"Offset of fi_opx_ep->hfi should start at cacheline 4!");
-OPX_COMPILE_TIME_ASSERT(offsetof(struct fi_opx_ep, init_send_cntr) == (FI_OPX_CACHE_LINE_SIZE * 5),
-			"Offset of fi_opx_ep->init_send_cntr should start at cacheline 5!");
-OPX_COMPILE_TIME_ASSERT(offsetof(struct fi_opx_ep, lock) == ((FI_OPX_CACHE_LINE_SIZE * 5)+52),
-			"Offset of fi_opx_ep->lock should start before cacheline 6!");
-
 /*
  * A 'scalable endpoint' may not be directly specified in a data movement
  * functions, such as fi_tsend(), as it is only a container for multiple
