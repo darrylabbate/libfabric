@@ -143,9 +143,9 @@ int pingpong(void)
     	FILE* fptr;
 
 	if (opts.dst_addr) {
-		fptr = fopen("/home/ec2-user/libfabric/client_fi_senddata_output.txt", "w");
+		fptr = fopen("/home/drl/szegel-cq-timing/libfabric/client_fi_senddata_output.txt", "w");
 	} else {
-		fptr = fopen("/home/ec2-user/libfabric/server_fi_senddata_output.txt", "w");
+		fptr = fopen("/home/drl/szegel-cq-timing/libfabric/server_fi_senddata_output.txt", "w");
 	}
 
 	for (int i = 0; i < ep->iterations; i++) {
@@ -264,9 +264,9 @@ int pingpong_rma(enum ft_rma_opcodes rma_op, struct fi_rma_iov *remote)
     	FILE* fptr;
 
 	if (opts.dst_addr) {
-		fptr = fopen("/home/ec2-user/libfabric/client_fi_writedata_output.txt", "w");
+		fptr = fopen("/home/drl/szegel-cq-timing/libfabric/client_fi_writedata_output.txt", "w");
 	} else {
-		fptr = fopen("/home/ec2-user/libfabric/server_fi_writedata_output.txt", "w");
+		fptr = fopen("/home/drl/szegel-cq-timing/libfabric/server_fi_writedata_output.txt", "w");
 	}
 
 	for (int i = 0; i < ep->iterations; i++) {

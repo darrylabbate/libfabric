@@ -1,36 +1,33 @@
-#!/bin/python3
-# source ~/env/bin/activate to get PF's env
-# This script needs to be kicked off on the server IP's host
-from matplotlib import pyplot as plt
+#!/usr/bin/env python3
 from PortaFiducia.tests.utils import run_command
 import subprocess
 from time import sleep
 
+rootdir = "/home/drl/szegel-cq-timing"
+prefix = f"{rootdir}/install"
 
 # Configurable server IP (in case we change instances)
-sever_ip = "172.31.35.142"
-client_ip = "172.31.35.207"
+sever_ip = "10.1.54.250"
+client_ip = "10.1.226.61"
 iterations = 2000000
 warmup_iterations = 100
 
 # Step 1: Compile Libfabric ~20s
 print("Compile libfabric and fabtests:")
 autogen = "./autogen.sh"
-configure = "./configure --prefix=$HOME/libfabric/install --disable-verbs --disable-psm3 --disable-opx --disable-usnic --disable-rstream --enable-efa --with-cuda=/usr/local/cuda --enable-cuda-dlopen --with-gdrcopy --enable-gdrcopy-dlopen"
-clean = "rm -rf $HOME/libfabric/install && make clean"
+configure = f"./configure --prefix={prefix} --disable-verbs --disable-psm3 --disable-opx --disable-usnic --disable-rstream --enable-efa --with-cuda=/usr/local/cuda --enable-cuda-dlopen --with-gdrcopy --enable-gdrcopy-dlopen"
 install = "make -j install"
-run_command(f"cd $HOME/libfabric; {autogen} && {configure} && {clean} && {install}")
+run_command(f"cd {prefix}/libfabric; {autogen} && {configure} && {install}")
 
 # Step 2: Compile Fabtests ~10s
-configure = "./configure --prefix=$HOME/libfabric/fabtests/install --with-libfabric=$HOME/libfabric/install --with-cuda=/usr/local/cuda"
-clean = "rm -rf $HOME/libfabric/fabtests/install && make clean"
-run_command(f"cd $HOME/libfabric/fabtests; {autogen} && {configure} && {clean} && {install}")
+configure = f"./configure --prefix={prefix} --with-libfabric={prefix} --with-cuda=/usr/local/cuda"
+run_command(f"cd {rootdir}/libfabric/fabtests; {autogen} && {configure} && {install}")
 
 
 # Step 3: Run fi_rdm_pingpong
 print("\n\n Running Eager Send Data Tests \n\n")
 
-executable = "/home/ec2-user/libfabric/fabtests/install/bin/fi_rdm_pingpong"
+executable = f"{prefix}/bin/fi_rdm_pingpong"
 server_args = f" --pin-core 1 -i 0 -p efa -D cuda -w {warmup_iterations} -I {iterations} -S 1024 -E "
 server_command = executable + server_args
 client_command = "ssh " + client_ip + " " + executable + server_args + sever_ip
@@ -91,10 +88,10 @@ def parse_rdm_pingpong_output(filename):
 
 (server_libfabric_to_rdma_core, server_rdma_core, server_rdma_core_to_libfabric,
  server_post_recv_buff, server_empty_cq_progress, server_fruitful_cq_progress,
- server_fruitful_cq_progress_num_completions) = parse_rdm_pingpong_output("/home/ec2-user/libfabric/server_fi_senddata_output.txt")
+ server_fruitful_cq_progress_num_completions) = parse_rdm_pingpong_output(f"{rootdir}/libfabric/server_fi_senddata_output.txt")
 (client_libfabric_to_rdma_core, client_rdma_core, client_rdma_core_to_libfabric,
  client_post_recv_buff, client_empty_cq_progress, client_fruitful_cq_progress,
- client_fruitful_cq_progress_num_completions) = parse_rdm_pingpong_output("/home/ec2-user/libfabric/client_fi_senddata_output.txt")
+ client_fruitful_cq_progress_num_completions) = parse_rdm_pingpong_output(f"{rootdir}/libfabric/client_fi_senddata_output.txt")
 
 print("\n")
 
@@ -123,18 +120,6 @@ def get_and_print_statistics(vector, name):
 
     print(f"{name} average {unit}: {avg}, pstd: {pstd}, min: {minimum}, max: {maximum}, median: {median}, num_samples: {num_samples}, unique: {unique}, num_outliers removed (5x mean): {num_outliers}")
 
-    if "fruitful cq progress num completion" in name:
-        # num completions is usually always 1, no hist
-        return
-
-    plt.figure()
-    plt.hist(vector, round(unique/5), range=[minimum-10, avg*2], align='mid')
-    plt.title(name)
-    plt.xlabel("Time (ns)")
-    plt.ylabel("Frequency")
-    plt.savefig(f"/home/ec2-user/libfabric/plots/{name}.png")
-    plt.close()
-
 
 print("Server's fi_senddata stats:")
 get_and_print_statistics(server_libfabric_to_rdma_core, "Server fi_senddata libfabric to rdma_core")
@@ -159,7 +144,7 @@ get_and_print_statistics(client_fruitful_cq_progress_num_completions, "Client fi
 
 # Step 4: Run fi_rdm_rma_pingpong
 print("\n\n Running RMA Write Data Tests \n\n")
-executable = "/home/ec2-user/libfabric/fabtests/install/bin/fi_rma_pingpong"
+executable = f"{prefix}/bin/fi_rma_pingpong"
 server_args = f" --pin-core 1 -i 0 -o writedata -p efa -D cuda -w {warmup_iterations} -I {iterations} -S 131072 -E "
 server_command = executable + server_args
 client_command = "ssh " + client_ip + " " + executable + server_args + sever_ip
@@ -216,10 +201,10 @@ def parse_rma_pingpong_output(filename):
 
 (server_libfabric_to_rdma_core, server_rdma_core, server_rdma_core_to_libfabric,
  server_empty_cq_progress, server_fruitful_cq_progress,
- server_fruitful_cq_progress_num_completions) = parse_rma_pingpong_output("/home/ec2-user/libfabric/server_fi_writedata_output.txt")
+ server_fruitful_cq_progress_num_completions) = parse_rma_pingpong_output(f"{rootdir}/libfabric/server_fi_writedata_output.txt")
 (client_libfabric_to_rdma_core, client_rdma_core, client_rdma_core_to_libfabric,
  client_empty_cq_progress, client_fruitful_cq_progress,
- client_fruitful_cq_progress_num_completions) = parse_rma_pingpong_output("/home/ec2-user/libfabric/client_fi_writedata_output.txt")
+ client_fruitful_cq_progress_num_completions) = parse_rma_pingpong_output(f"{rootdir}/libfabric/client_fi_writedata_output.txt")
 
 
 print("\n")
