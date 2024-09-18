@@ -192,7 +192,7 @@ struct efa_rdm_pke {
 	 *       (thus data has been copied to wiredata).
 	 *    b) packet is an incoming (RX) packet.
 	 */
-	_Alignas(EFA_RDM_PKE_ALIGNMENT) char wiredata[0];
+	_Alignas(EFA_RDM_PKE_ALIGNMENT) char wiredata[];
 };
 
 #if defined(static_assert) && defined(__x86_64__)

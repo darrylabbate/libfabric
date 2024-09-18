@@ -217,7 +217,7 @@ struct efa_rdm_ctsdata_hdr {
 	uint64_t seg_length;
 	uint64_t seg_offset;
 	/* optional connid header, present when EFA_RDM_PKT_CONNID_HDR is on */
-	struct efa_rdm_ctsdata_opt_connid_hdr connid_hdr[0];
+	struct efa_rdm_ctsdata_opt_connid_hdr connid_hdr[];
 };
 
 EFA_RDM_ENSURE_HEADER_SIZE(efa_rdm_ctsdata_hdr, 24);
@@ -336,7 +336,7 @@ struct efa_rdm_handshake_hdr {
 	 * See protocol v4 document section 2.1 for detail.
 	 */
 	uint32_t nextra_p3;
-	uint64_t extra_info[0];
+	uint64_t extra_info[];
 };
 
 /* indicate this package has the sender host id */
@@ -415,7 +415,7 @@ struct efa_rdm_receipt_hdr {
  */
 struct efa_rdm_req_opt_raw_addr_hdr {
 	uint32_t addr_len;
-	char raw_addr[0];
+	char raw_addr[];
 };
 
 struct efa_rdm_req_opt_cq_data_hdr {
@@ -507,7 +507,7 @@ struct efa_rdm_rtw_base_hdr {
 struct efa_rdm_eager_rtw_hdr {
 	EFA_RDM_BASE_HEADER();
 	uint32_t rma_iov_count;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /**
@@ -519,7 +519,7 @@ struct efa_rdm_longcts_rtw_hdr {
 	uint64_t msg_length;
 	uint32_t send_id;
 	uint32_t credit_request;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /*
@@ -532,7 +532,7 @@ struct efa_rdm_rtr_hdr {
 	uint64_t msg_length;
 	uint32_t recv_id; /* ID of the receive operation of the read requester, will be included in DATA/READRSP header */
 	uint32_t recv_length; /* number of bytes that the read requester is ready to receive */
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /* @brief efa_rdm_rta_hdr are shared by 4 types of RTA:
@@ -561,7 +561,7 @@ struct efa_rdm_rta_hdr {
 		uint32_t send_id;
 	};
 
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /*
@@ -598,7 +598,7 @@ struct efa_rdm_longread_rtw_hdr {
 	uint64_t msg_length;
 	uint32_t send_id;
 	uint32_t read_iov_count;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /*
@@ -674,7 +674,7 @@ struct efa_rdm_dc_eager_rtw_hdr {
 	/* end of efa_rdm_rtw_base_hdr */
 	uint32_t send_id;
 	uint32_t padding;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /**
@@ -686,7 +686,7 @@ struct efa_rdm_dc_longcts_rtw_hdr {
 	uint64_t msg_length;
 	uint32_t send_id;
 	uint32_t credit_request;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 /* DC_WRITE_RTA header format is merged into efa_rdm_rta_hdr */
@@ -728,7 +728,7 @@ struct efa_rdm_runtcts_rtw_hdr {
 	uint32_t credit_request;
 	uint64_t seg_offset;
 	uint64_t runt_length;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 struct efa_rdm_runtread_rtm_base_hdr {
@@ -766,7 +766,7 @@ struct efa_rdm_runtread_rtw_hdr {
 	uint32_t read_iov_count;
 	uint64_t seg_offset;
 	uint64_t runt_length;
-	struct efa_rma_iov rma_iov[0];
+	struct efa_rma_iov rma_iov[];
 };
 
 #endif
