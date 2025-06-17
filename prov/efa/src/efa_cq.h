@@ -94,23 +94,23 @@ void efa_ibv_cq_poll_list_remove(struct dlist_entry *poll_list, struct ofi_genlo
  *
  * @param[in] ibv_cq_init_attr_ex Pointer to ibv_cq_init_attr_ex
  * @param[in] ibv_ctx Pointer to ibv_context
- * @param[in,out] ibv_cq_ex Pointer to newly created ibv_cq_ex
- * @param[in,out] ibv_cq_ex_type enum indicating if efadv_create_cq or ibv_create_cq_ex was used
+ * @param[in,out] ibv_cq Pointer to newly created efa_ibv_cq
  * @return Return 0 on success, error code otherwise
  */
 static inline int efa_cq_ibv_cq_ex_open_with_ibv_create_cq_ex(
 	struct ibv_cq_init_attr_ex *ibv_cq_init_attr_ex,
-	struct ibv_context *ibv_ctx, struct ibv_cq_ex **ibv_cq_ex,
-	enum ibv_cq_ex_type *ibv_cq_ex_type)
+	struct ibv_context *ibv_ctx, struct efa_ibv_cq *ibv_cq)
 {
-	*ibv_cq_ex = ibv_create_cq_ex(ibv_ctx, ibv_cq_init_attr_ex);
+	*ibv_cq = (struct efa_ibv_cq) {
+		.ibv_cq_ex = ibv_create_cq_ex(ibv_ctx, ibv_cq_init_attr_ex),
+		.ibv_cq_ex_type = IBV_CQ,
+	};
 
-	if (!*ibv_cq_ex) {
+	if (!ibv_cq->ibv_cq_ex) {
 		EFA_WARN(FI_LOG_CQ, "Unable to create extended CQ: %s\n", strerror(errno));
 		return -FI_EINVAL;
 	}
 
-	*ibv_cq_ex_type = IBV_CQ;
 	return 0;
 }
 
@@ -119,16 +119,14 @@ static inline int efa_cq_ibv_cq_ex_open_with_ibv_create_cq_ex(
  *
  * @param[in] attr Completion queue attributes
  * @param[in] ibv_ctx Pointer to ibv_context
- * @param[in,out] ibv_cq_ex Pointer to newly created ibv_cq_ex
- * @param[in,out] ibv_cq_ex_type enum indicating if efadv_create_cq or ibv_create_cq_ex was used
+ * @param[in,out] ibv_cq Pointer to newly created efa_ibv_cq
  * @param[in] efa_cq_init_attr Pointer to fi_efa_cq_init_attr containing attributes for efadv_create_cq
  * @return Return 0 on success, error code otherwise
  */
 #if HAVE_EFADV_CQ_EX
 static inline int efa_cq_ibv_cq_ex_open(struct fi_cq_attr *attr,
 					struct ibv_context *ibv_ctx,
-					struct ibv_cq_ex **ibv_cq_ex,
-					enum ibv_cq_ex_type *ibv_cq_ex_type,
+					struct efa_ibv_cq *ibv_cq,
 					struct fi_efa_cq_init_attr *efa_cq_init_attr)
 {
 	struct ibv_cq_init_attr_ex init_attr_ex = {
@@ -163,11 +161,14 @@ static inline int efa_cq_ibv_cq_ex_open(struct fi_cq_attr *attr,
 	}
 #endif
 
-	*ibv_cq_ex = efadv_create_cq(ibv_ctx, &init_attr_ex,
+	*ibv_cq = (struct efa_ibv_cq) {
+		.ibv_cq_ex = efadv_create_cq(ibv_ctx, &init_attr_ex,
 				     &efadv_cq_init_attr,
-				     sizeof(efadv_cq_init_attr));
+				     sizeof(efadv_cq_init_attr)),
+		.ibv_cq_ex_type = EFADV_CQ,
+	};
 
-	if (!*ibv_cq_ex) {
+	if (!ibv_cq->ibv_cq_ex) {
 #if HAVE_CAPS_CQ_WITH_EXT_MEM_DMABUF
 		if (efa_cq_init_attr->flags & FI_EFA_CQ_INIT_FLAGS_EXT_MEM_DMABUF) {
 			EFA_WARN(FI_LOG_CQ,
@@ -179,17 +180,15 @@ static inline int efa_cq_ibv_cq_ex_open(struct fi_cq_attr *attr,
 		/* This could be due to old EFA kernel module versions */
 		/* Fallback to ibv_create_cq_ex */
 		return efa_cq_ibv_cq_ex_open_with_ibv_create_cq_ex(
-			&init_attr_ex, ibv_ctx, ibv_cq_ex, ibv_cq_ex_type);
+			&init_attr_ex, ibv_ctx, ibv_cq);
 	}
 
-	*ibv_cq_ex_type = EFADV_CQ;
 	return 0;
 }
 #else
 static inline int efa_cq_ibv_cq_ex_open(struct fi_cq_attr *attr,
 					struct ibv_context *ibv_ctx,
-					struct ibv_cq_ex **ibv_cq_ex,
-					enum ibv_cq_ex_type *ibv_cq_ex_type,
+					struct efa_ibv_cq *ibv_cq,
 					struct fi_efa_cq_init_attr *efa_cq_init_attr)
 {
 	struct ibv_cq_init_attr_ex init_attr_ex = {
@@ -205,7 +204,7 @@ static inline int efa_cq_ibv_cq_ex_open(struct fi_cq_attr *attr,
 	};
 
 	return efa_cq_ibv_cq_ex_open_with_ibv_create_cq_ex(
-		&init_attr_ex, ibv_ctx, ibv_cq_ex, ibv_cq_ex_type);
+		&init_attr_ex, ibv_ctx, ibv_cq);
 }
 #endif
 
