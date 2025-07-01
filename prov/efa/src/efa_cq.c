@@ -258,10 +258,13 @@ int efa_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq)
 	cq = container_of(ibv_cq, struct efa_cq, ibv_cq);
 	efa_domain = container_of(cq->util_cq.domain, struct efa_domain, util_domain);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 	/* Call ibv_start_poll only once */
 	efa_cq_start_poll(ibv_cq);
 
 	while (efa_cq_wc_available(ibv_cq)) {
+#pragma GCC diagnostic pop
 		base_ep = efa_domain->qp_table[ibv_wc_read_qp_num(cq->ibv_cq.ibv_cq_ex) & efa_domain->qp_table_sz_m1]->base_ep;
 		opcode = ibv_wc_read_opcode(cq->ibv_cq.ibv_cq_ex);
 		if (cq->ibv_cq.ibv_cq_ex->status) {
@@ -319,9 +322,12 @@ int efa_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq)
 			break;
 		}
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 		efa_cq_next_poll(ibv_cq);
 	}
 	efa_cq_end_poll(ibv_cq);
+#pragma GCC diagnostic pop
 	return ibv_cq->poll_err;
 }
 

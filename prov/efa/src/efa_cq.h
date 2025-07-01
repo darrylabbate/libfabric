@@ -305,6 +305,9 @@ static inline int efa_write_error_msg(struct efa_base_ep *ep, fi_addr_t addr,
 	return 0;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
+
 static inline uint32_t efa_cq_wc_read_qp_num(struct efa_ibv_cq *cq)
 {
 	return ibv_wc_read_qp_num(cq->ibv_cq_ex);
@@ -361,6 +364,8 @@ static inline void efa_cq_end_poll(struct efa_ibv_cq *cq)
 	cq->poll_active = false;
 	cq->poll_err = 0;
 }
+
+#pragma GCC diagnostic pop
 
 int efa_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq);
 

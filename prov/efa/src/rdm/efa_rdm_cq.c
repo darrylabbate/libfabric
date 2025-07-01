@@ -326,7 +326,10 @@ static int efa_rdm_cq_match_ep(struct dlist_entry *item, const void *ep)
 
 static inline struct efa_rdm_ep *efa_rdm_cq_get_rdm_ep(struct efa_ibv_cq *cq, struct efa_domain *efa_domain)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 	struct efa_base_ep *base_ep = efa_domain->qp_table[efa_cq_wc_read_qp_num(cq) & efa_domain->qp_table_sz_m1]->base_ep;
+#pragma GCC diagnostic pop
 	return container_of(base_ep, struct efa_rdm_ep, base_ep);
 }
 
@@ -497,21 +500,30 @@ void efa_rdm_cq_poll_ibv_cq_closing_ep(struct efa_ibv_cq *ibv_cq, struct efa_rdm
 
 	dlist_init(&rx_progressed_ep_list);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 	efa_cq_start_poll(ibv_cq);
 	while (efa_cq_wc_available(ibv_cq)) {
+#pragma GCC diagnostic pop
 		ep = efa_rdm_cq_get_rdm_ep(ibv_cq, efa_domain);
 		if (ep == closing_ep) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 			if (OFI_UNLIKELY(efa_rdm_cq_process_wc_closing_ep(ibv_cq, ep) != IBV_WC_SUCCESS))
 				break;
 		} else {
 			if (OFI_UNLIKELY(efa_rdm_cq_process_wc(ibv_cq, ep) != IBV_WC_SUCCESS))
+#pragma GCC diagnostic pop
 				break;
 			if (ep->efa_rx_pkts_to_post > 0 && !dlist_find_first_match(&rx_progressed_ep_list, &efa_rdm_cq_match_ep, ep))
 				dlist_insert_tail(&ep->entry, &rx_progressed_ep_list);
 		}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 		efa_cq_next_poll(ibv_cq);
 	}
 	efa_cq_end_poll(ibv_cq);
+#pragma GCC diagnostic pop
 	dlist_foreach_container_safe(
 		&rx_progressed_ep_list, struct efa_rdm_ep, ep, entry, tmp) {
 		efa_rdm_ep_post_internal_rx_pkts(ep);
@@ -538,18 +550,26 @@ int efa_rdm_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq)
 
 	dlist_init(&rx_progressed_ep_list);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 	/* Call ibv_start_poll only once */
 	efa_cq_start_poll(ibv_cq);
 
 	while (efa_cq_wc_available(ibv_cq)) {
+#pragma GCC diagnostic pop
 		ep = efa_rdm_cq_get_rdm_ep(ibv_cq, efa_domain);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 		if (OFI_UNLIKELY(efa_rdm_cq_process_wc(ibv_cq, ep) != IBV_WC_SUCCESS))
+#pragma GCC diagnostic pop
 			break;
 		if (ep->efa_rx_pkts_to_post > 0 && !dlist_find_first_match(&rx_progressed_ep_list, &efa_rdm_cq_match_ep, ep))
 			dlist_insert_tail(&ep->entry, &rx_progressed_ep_list);
 		if (++i >= cqe_to_process)
 			break;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Winline"
 		/*
 		 * ibv_next_poll MUST be call after the current WC is fully processed,
 		 * which prevents later calls on ibv_cq_ex from reading the wrong WC.
@@ -557,6 +577,7 @@ int efa_rdm_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq)
 		efa_cq_next_poll(ibv_cq);
 	}
 	efa_cq_end_poll(ibv_cq);
+#pragma GCC diagnostic pop
 	dlist_foreach_container_safe(
 		&rx_progressed_ep_list, struct efa_rdm_ep, ep, entry, tmp) {
 		efa_rdm_ep_post_internal_rx_pkts(ep);

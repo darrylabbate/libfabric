@@ -45,7 +45,7 @@ AM_CONDITIONAL([MACOS], [test "x$macos" = "x1"])
 AM_CONDITIONAL([LINUX], [test "x$linux" = "x1"])
 AM_CONDITIONAL([FREEBSD], [test "x$freebsd" = "x1"])
 
-base_c_warn_flags="-Wall -Wundef -Wpointer-arith"
+base_c_warn_flags="-Wall -Wundef -Wpointer-arith -Werror=unknown-pragmas"
 debug_c_warn_flags="-Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-missing-field-initializers"
 debug_c_other_flags="-fstack-protector-strong"
 picky_c_warn_flags="-Wno-long-long -Wmissing-prototypes -Wstrict-prototypes -Wcomment -pedantic"
