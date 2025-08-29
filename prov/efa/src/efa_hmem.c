@@ -14,6 +14,9 @@ struct efa_hmem_info g_efa_hmem_info[] = {
 	[FI_HMEM_CUDA] = {
 		.runt_size = EFA_DEFAULT_RUNT_SIZE,
 	},
+	[FI_HMEM_ROCR] = {
+		.runt_size = EFA_DEFAULT_RUNT_SIZE,
+	},
 	[FI_HMEM_NEURON] = {
 		.runt_size = EFA_NEURON_RUNT_SIZE,
 	},
@@ -23,6 +26,7 @@ struct efa_hmem_info g_efa_hmem_info[] = {
 	},
 };
 
+// TODO HAVE_ROCR?
 #if HAVE_CUDA || HAVE_NEURON
 static size_t efa_max_eager_msg_size_with_largest_header() {
 	int mtu_size;
@@ -71,6 +75,20 @@ static int efa_hmem_info_init_protocol_thresholds(enum fi_hmem_iface iface)
 			EFA_WARN(FI_LOG_CORE,
 			         "The environment variable FI_EFA_INTER_MAX_MEDIUM_MESSAGE_SIZE was set, "
 			         "but EFA HMEM via Cuda API only supports eager and runting read protocols. "
+			         "The variable will not modify CUDA memory run config.\n");
+		}
+		break;
+	// TODO
+	case FI_HMEM_ROCR:
+		info->min_read_msg_size = efa_max_eager_msg_size_with_largest_header() + 1;
+		info->min_read_write_size = efa_max_eager_msg_size_with_largest_header() + 1;
+		fi_param_get_size_t(&efa_prov, "runt_size", &info->runt_size);
+		fi_param_get_size_t(&efa_prov, "inter_min_read_message_size", &info->min_read_msg_size);
+		fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &info->min_read_write_size);
+		if (-FI_ENODATA != fi_param_get(&efa_prov, "inter_max_medium_message_size", &(size_t){0})) {
+			EFA_WARN(FI_LOG_CORE,
+			         "The environment variable FI_EFA_INTER_MAX_MEDIUM_MESSAGE_SIZE was set, "
+			         "but EFA HMEM via ROCr API only supports eager and runting read protocols. "
 			         "The variable will not modify CUDA memory run config.\n");
 		}
 		break;
