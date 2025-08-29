@@ -17,6 +17,7 @@
 static const enum fi_hmem_iface efa_hmem_ifaces[] = {
 	FI_HMEM_SYSTEM,	/* Must be first here */
 	FI_HMEM_CUDA,
+	FI_HMEM_ROCR,
 	FI_HMEM_NEURON,
 	FI_HMEM_SYNAPSEAI
 };
@@ -58,11 +59,18 @@ static inline int efa_copy_from_hmem(void *desc, void *buff, const void *src, si
 		hmem_data = ((struct efa_mr *)desc)->peer.hmem_data;
 	}
 
-	if (FI_HMEM_CUDA == iface && (flags & OFI_HMEM_DATA_DEV_REG_HANDLE)) {
+	if (flags & OFI_HMEM_DATA_DEV_REG_HANDLE) {
 		assert(hmem_data);
-		/* TODO: Fine tune the max data size to switch from gdrcopy to cudaMemcpy */
-		cuda_gdrcopy_from_dev((uint64_t)hmem_data, buff, src, size);
-		return FI_SUCCESS;
+		switch (iface) {
+		case FI_HMEM_CUDA:
+			/* TODO: Fine tune the max data size to switch from gdrcopy to cudaMemcpy */
+			cuda_gdrcopy_from_dev((uint64_t)hmem_data, buff, src, size);
+			return FI_SUCCESS;
+		case FI_HMEM_ROCR:
+			return rocr_dev_reg_copy_from_hmem((uint64_t)hmem_data, buff, src, size);
+		default:
+			break;
+		}
 	}
 
 	return ofi_copy_from_hmem(iface, device, buff, src, size);
@@ -90,11 +98,18 @@ static inline int efa_copy_to_hmem(void *desc, void *dest, const void *buff, siz
 		hmem_data = ((struct efa_mr *)desc)->peer.hmem_data;
 	}
 
-	if (FI_HMEM_CUDA == iface && (flags & OFI_HMEM_DATA_DEV_REG_HANDLE)) {
+	if (flags & OFI_HMEM_DATA_DEV_REG_HANDLE) {
 		assert(hmem_data);
-		/* TODO: Fine tune the max data size to switch from gdrcopy to cudaMemcpy */
-		cuda_gdrcopy_to_dev((uint64_t)hmem_data, dest, buff, size);
-		return FI_SUCCESS;
+		switch (iface) {
+		case FI_HMEM_CUDA:
+			/* TODO: Fine tune the max data size to switch from gdrcopy to cudaMemcpy */
+			cuda_gdrcopy_to_dev((uint64_t)hmem_data, dest, buff, size);
+			return FI_SUCCESS;
+		case FI_HMEM_ROCR:
+			return rocr_dev_reg_copy_to_hmem((uint64_t)hmem_data, dest, buff, size);
+		default:
+			break;
+		}
 	}
 
 	return ofi_copy_to_hmem(iface, device, dest, buff, size);
