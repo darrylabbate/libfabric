@@ -5,7 +5,23 @@
 #include "efa_hmem.h"
 #include "rdm/efa_rdm_pkt_type.h"
 
-struct efa_hmem_info g_efa_hmem_info[OFI_HMEM_MAX];
+struct efa_hmem_info g_efa_hmem_info[] = {
+	[FI_HMEM_SYSTEM] = {
+		.max_medium_msg_size = EFA_DEFAULT_INTER_MAX_MEDIUM_MESSAGE_SIZE,
+		.min_read_msg_size = EFA_DEFAULT_INTER_MIN_READ_MESSAGE_SIZE,
+		.min_read_write_size = EFA_DEFAULT_INTER_MIN_READ_WRITE_SIZE,
+	},
+	[FI_HMEM_CUDA] = {
+		.runt_size = EFA_DEFAULT_RUNT_SIZE,
+	},
+	[FI_HMEM_NEURON] = {
+		.runt_size = EFA_NEURON_RUNT_SIZE,
+	},
+	[FI_HMEM_SYNAPSEAI] = {
+		.min_read_msg_size = 1,
+		.min_read_write_size = 1,
+	},
+};
 
 #if HAVE_CUDA || HAVE_NEURON
 static size_t efa_max_eager_msg_size_with_largest_header() {
@@ -29,10 +45,9 @@ static size_t efa_max_eager_msg_size_with_largest_header() {
  *
  * @return  0
  */
-static int efa_domain_hmem_info_init_protocol_thresholds(enum fi_hmem_iface iface)
+static int efa_hmem_info_init_protocol_thresholds(enum fi_hmem_iface iface)
 {
 	struct efa_hmem_info *info = &g_efa_hmem_info[iface];
-	size_t tmp_value;
 
 	/* Fall back to FI_HMEM_SYSTEM initialization logic when p2p is
 	 * unavailable */
@@ -41,25 +56,18 @@ static int efa_domain_hmem_info_init_protocol_thresholds(enum fi_hmem_iface ifac
 
 	switch (iface) {
 	case FI_HMEM_SYSTEM:
-		/* We have not yet tested runting with system memory */
-		info->runt_size = 0;
-		info->max_medium_msg_size = EFA_DEFAULT_INTER_MAX_MEDIUM_MESSAGE_SIZE;
-		info->min_read_msg_size = EFA_DEFAULT_INTER_MIN_READ_MESSAGE_SIZE;
-		info->min_read_write_size = EFA_DEFAULT_INTER_MIN_READ_WRITE_SIZE;
 		fi_param_get_size_t(&efa_prov, "runt_size", &info->runt_size);
 		fi_param_get_size_t(&efa_prov, "inter_max_medium_message_size", &info->max_medium_msg_size);
 		fi_param_get_size_t(&efa_prov, "inter_min_read_message_size", &info->min_read_msg_size);
 		fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &info->min_read_write_size);
 		break;
 	case FI_HMEM_CUDA:
-		info->runt_size = EFA_DEFAULT_RUNT_SIZE;
-		info->max_medium_msg_size = 0;
 		info->min_read_msg_size = efa_max_eager_msg_size_with_largest_header() + 1;
 		info->min_read_write_size = efa_max_eager_msg_size_with_largest_header() + 1;
 		fi_param_get_size_t(&efa_prov, "runt_size", &info->runt_size);
 		fi_param_get_size_t(&efa_prov, "inter_min_read_message_size", &info->min_read_msg_size);
 		fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &info->min_read_write_size);
-		if (-FI_ENODATA != fi_param_get(&efa_prov, "inter_max_medium_message_size", &tmp_value)) {
+		if (-FI_ENODATA != fi_param_get(&efa_prov, "inter_max_medium_message_size", &(size_t){0})) {
 			EFA_WARN(FI_LOG_CORE,
 			         "The environment variable FI_EFA_INTER_MAX_MEDIUM_MESSAGE_SIZE was set, "
 			         "but EFA HMEM via Cuda API only supports eager and runting read protocols. "
@@ -67,14 +75,12 @@ static int efa_domain_hmem_info_init_protocol_thresholds(enum fi_hmem_iface ifac
 		}
 		break;
 	case FI_HMEM_NEURON:
-		info->runt_size = EFA_NEURON_RUNT_SIZE;
-		info->max_medium_msg_size = 0;
 		info->min_read_msg_size = efa_max_eager_msg_size_with_largest_header() + 1;
 		info->min_read_write_size = efa_max_eager_msg_size_with_largest_header() + 1;
 		fi_param_get_size_t(&efa_prov, "runt_size", &info->runt_size);
 		fi_param_get_size_t(&efa_prov, "inter_min_read_message_size", &info->min_read_msg_size);
 		fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &info->min_read_write_size);
-		if (-FI_ENODATA != fi_param_get(&efa_prov, "inter_max_medium_message_size", &tmp_value)) {
+		if (-FI_ENODATA != fi_param_get(&efa_prov, "inter_max_medium_message_size", &(size_t){0})) {
 			EFA_WARN(FI_LOG_CORE,
 			         "The environment variable FI_EFA_INTER_MAX_MEDIUM_MESSAGE_SIZE was set, "
 			         "but EFA HMEM via Neuron API only supports eager and runting read protocols. "
@@ -82,14 +88,10 @@ static int efa_domain_hmem_info_init_protocol_thresholds(enum fi_hmem_iface ifac
 		}
 		break;
 	case FI_HMEM_SYNAPSEAI:
-		info->runt_size = 0;
-		info->max_medium_msg_size = 0;
-		info->min_read_msg_size = 1;
-		info->min_read_write_size = 1;
-		if (-FI_ENODATA != fi_param_get_size_t(&efa_prov, "inter_max_medium_message_size", &tmp_value) ||
-		    -FI_ENODATA != fi_param_get_size_t(&efa_prov, "inter_min_read_message_size", &tmp_value) ||
-		    -FI_ENODATA != fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &tmp_value) ||
-		    -FI_ENODATA != fi_param_get_size_t(&efa_prov, "runt_size", &tmp_value)) {
+		if (-FI_ENODATA != fi_param_get_size_t(&efa_prov, "inter_max_medium_message_size", &(size_t){0}) ||
+		    -FI_ENODATA != fi_param_get_size_t(&efa_prov, "inter_min_read_message_size", &(size_t){0}) ||
+		    -FI_ENODATA != fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &(size_t){0}) ||
+		    -FI_ENODATA != fi_param_get_size_t(&efa_prov, "runt_size", &(size_t){0})) {
 			EFA_WARN(FI_LOG_CORE,
 			        "One or more of the following environment variable(s) were set: ["
 			        "FI_EFA_INTER_MAX_MEDIUM_MESSAGE_SIZE, "
@@ -298,7 +300,7 @@ efa_hmem_info_init_iface(enum fi_hmem_iface iface)
 			EFA_INFO(FI_LOG_CORE, "%s P2P support is not available.\n", fi_tostr(&iface, FI_TYPE_HMEM_IFACE));
 	}
 
-	efa_domain_hmem_info_init_protocol_thresholds(iface);
+	efa_hmem_info_init_protocol_thresholds(iface);
 }
 
 /**
