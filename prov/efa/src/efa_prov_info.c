@@ -414,8 +414,7 @@ void efa_prov_info_direct_set_hmem_flags(struct fi_info *prov_info)
 	}
 
 	/* EFA direct only supports HMEM when p2p support is available */
-	EFA_HMEM_IFACE_FOREACH_NON_SYSTEM(i) {
-		iface = efa_hmem_ifaces[i];
+	EFA_HMEM_IFACE_FOREACH_NON_SYSTEM(iface) {
 		hmem_info = &g_efa_hmem_info[iface];
 		if (hmem_info->initialized && !hmem_info->p2p_supported_by_device) {
 			EFA_INFO(FI_LOG_CORE,
