@@ -14,6 +14,9 @@ struct efa_hmem_info g_efa_hmem_info[] = {
 	[FI_HMEM_CUDA] = {
 		.runt_size = EFA_DEFAULT_RUNT_SIZE,
 	},
+	[FI_HMEM_ROCR] = {
+		.runt_size = EFA_DEFAULT_RUNT_SIZE,
+	},
 	[FI_HMEM_NEURON] = {
 		.runt_size = EFA_NEURON_RUNT_SIZE,
 	},
@@ -23,7 +26,8 @@ struct efa_hmem_info g_efa_hmem_info[] = {
 	},
 };
 
-#if HAVE_CUDA || HAVE_NEURON
+// TODO double-check for ROCr
+#if HAVE_CUDA || HAVE_ROCR || HAVE_NEURON
 static size_t efa_max_eager_msg_size_with_largest_header() {
 	static bool computed = false;
 	static size_t size = 0;
@@ -67,6 +71,7 @@ static int efa_hmem_info_init_protocol_thresholds(enum fi_hmem_iface iface)
 		fi_param_get_size_t(&efa_prov, "inter_min_read_write_size", &info->min_read_write_size);
 		break;
 	case FI_HMEM_CUDA:
+	case FI_HMEM_ROCR:
 	case FI_HMEM_NEURON:
 		info->min_read_msg_size = efa_max_eager_msg_size_with_largest_header() + 1;
 		info->min_read_write_size = efa_max_eager_msg_size_with_largest_header() + 1;
@@ -280,7 +285,8 @@ efa_hmem_info_init_iface(enum fi_hmem_iface iface)
 
 	info->initialized = true;
 
-	if (iface == FI_HMEM_SYNAPSEAI || iface == FI_HMEM_SYSTEM) {
+	// TODO correctness of unconditional ROCr p2p support
+	if (iface == FI_HMEM_SYNAPSEAI || iface == FI_HMEM_SYSTEM || iface == FI_HMEM_ROCR) {
 		info->p2p_supported_by_device = true;
 	} else if (ofi_hmem_p2p_disabled()) {
 		info->p2p_supported_by_device = false;
