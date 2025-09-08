@@ -46,6 +46,7 @@ int efa_mr_cache_open(struct ofi_mr_cache **cache, struct efa_domain *domain)
 	struct ofi_mem_monitor *memory_monitors[OFI_HMEM_MAX] = {
 		[FI_HMEM_SYSTEM] = default_monitor,
 		[FI_HMEM_CUDA] = cuda_monitor,
+		[FI_HMEM_ROCR] = rocr_monitor,
 	};
 	int err;
 
