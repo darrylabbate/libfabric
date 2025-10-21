@@ -5,6 +5,8 @@
 #include "rdm/efa_rdm_cq.h"
 #include "efa_av.h"
 #include "efa_data_path_direct_entry.h"
+#include <pthread.h>
+#include <unistd.h>
 
 /**
  * @brief implementation of test cases for fi_cq_read() works with empty device CQ for given endpoint type
@@ -1818,6 +1820,174 @@ void test_efa_cq_control_getwaitobj(struct efa_resource **state)
 	assert_int_equal(ret, 0);
 	assert_int_equal(wait_obj, efa_cq->wait_obj);
 	assert_int_equal(wait_obj, FI_WAIT_FD);
+}
+
+/* Helper structures for signal test */
+struct signal_test_args {
+	struct fid_cq *cq;
+	struct fi_cq_data_entry *entry;
+	int result;
+};
+
+static void *signal_test_thread(void *arg)
+{
+	struct signal_test_args *args = (struct signal_test_args *)arg;
+	
+	/* This should block and then be woken up by fi_cq_signal */
+	args->result = fi_cq_sread(args->cq, args->entry, 1, NULL, 5000); /* 5 second timeout */
+	
+	return NULL;
+}
+
+static int test_efa_rdm_cq_sread_prep(struct efa_resource *resource)
+{
+	struct fid_cq *cq;
+	struct fi_cq_attr cq_attr = {
+		.format = FI_CQ_FORMAT_DATA,
+		.wait_obj = FI_WAIT_UNSPEC,
+		.size = 8,
+	};
+	int ret;
+
+	efa_unit_test_resource_construct_no_cq_and_ep_not_enabled(resource, FI_EP_RDM, EFA_RDM_FABRIC_NAME);
+
+	ret = fi_cq_open(resource->domain, &cq_attr, &cq, NULL);
+	if (ret)
+		/* EFA device doesn't support cq notification. Don't test sread. */
+		return ret;
+
+	assert_int_equal(ret, 0);
+	assert_int_equal(fi_ep_bind(resource->ep, &cq->fid, FI_SEND | FI_RECV), 0);
+	assert_int_equal(fi_enable(resource->ep), 0);
+
+	resource->cq = cq;
+	return 0;
+}
+
+/**
+ * @brief test efa_rdm_cq fi_cq_sread() returns -FI_EINVAL when no wait object
+ */
+void test_efa_rdm_cq_sread_einval(struct efa_resource **state)
+{
+	struct efa_resource *resource = *state;
+	struct fi_cq_data_entry cq_entry = {0};
+	int ret;
+
+	efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_RDM_FABRIC_NAME);
+
+	/* CQ created with FI_WAIT_NONE, should return -FI_EINVAL */
+	ret = fi_cq_sread(resource->cq, &cq_entry, 1, NULL, 1);
+	assert_int_equal(ret, -FI_EINVAL);
+}
+
+/**
+ * @brief test efa_rdm_cq fi_cq_sread() returns -FI_EAGAIN when CQ is empty
+ */
+void test_efa_rdm_cq_sread_eagain(struct efa_resource **state)
+{
+	struct efa_resource *resource = *state;
+	struct fi_cq_data_entry cq_entry = {0};
+	int ret;
+
+	ret = test_efa_rdm_cq_sread_prep(resource);
+	if (ret)
+		return;
+
+	/* Poll timeout because CQ is empty */
+	ret = fi_cq_sread(resource->cq, &cq_entry, 1, NULL, 1);
+	assert_int_equal(ret, -FI_EAGAIN);
+}
+
+/**
+ * @brief test efa_rdm_cq fi_cq_signal() functionality
+ */
+void test_efa_rdm_cq_signal(struct efa_resource **state)
+{
+	struct efa_resource *resource = *state;
+	struct fi_cq_data_entry cq_entry = {0};
+	pthread_t thread;
+	struct signal_test_args args;
+	int ret;
+
+	ret = test_efa_rdm_cq_sread_prep(resource);
+	if (ret)
+		return;
+
+	args.cq = resource->cq;
+	args.entry = &cq_entry;
+	args.result = 0;
+
+	/* Start thread that will block on sread */
+	ret = pthread_create(&thread, NULL, signal_test_thread, &args);
+	assert_int_equal(ret, 0);
+
+	/* Give thread time to start blocking */
+	usleep(100000); /* 100ms */
+
+	/* Signal the CQ to wake up the blocked thread */
+	ret = fi_cq_signal(resource->cq);
+	assert_int_equal(ret, 0);
+
+	/* Wait for thread to complete */
+	ret = pthread_join(thread, NULL);
+	assert_int_equal(ret, 0);
+
+	/* Thread should have been woken up by signal */
+	assert_int_equal(args.result, -FI_EAGAIN);
+}
+
+/**
+ * @brief test efa_rdm_cq fi_cq_signal() returns -FI_EINVAL with FI_WAIT_NONE
+ */
+void test_efa_rdm_cq_signal_einval(struct efa_resource **state)
+{
+	struct efa_resource *resource = *state;
+	int ret;
+
+	efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_RDM_FABRIC_NAME);
+
+	/* CQ created with FI_WAIT_NONE, signal should return -FI_EINVAL */
+	ret = fi_cq_signal(resource->cq);
+	assert_int_equal(ret, -FI_EINVAL);
+}
+
+/**
+ * @brief test efa_rdm_cq with FI_WAIT_FD
+ */
+void test_efa_rdm_cq_wait_fd(struct efa_resource **state)
+{
+	struct efa_resource *resource = *state;
+	struct fid_cq *cq;
+	struct fi_cq_attr cq_attr = {
+		.format = FI_CQ_FORMAT_DATA,
+		.wait_obj = FI_WAIT_FD,
+		.size = 8,
+	};
+	struct fi_cq_data_entry cq_entry = {0};
+	int fd, ret;
+
+	efa_unit_test_resource_construct_no_cq_and_ep_not_enabled(resource, FI_EP_RDM, EFA_RDM_FABRIC_NAME);
+
+	ret = fi_cq_open(resource->domain, &cq_attr, &cq, NULL);
+	if (ret)
+		/* EFA device doesn't support cq notification. Don't test. */
+		return;
+
+	assert_int_equal(ret, 0);
+	assert_int_equal(fi_ep_bind(resource->ep, &cq->fid, FI_SEND | FI_RECV), 0);
+	assert_int_equal(fi_enable(resource->ep), 0);
+
+	/* Test FI_GETWAIT returns valid FD */
+	ret = fi_control(&cq->fid, FI_GETWAIT, &fd);
+	assert_int_equal(ret, 0);
+	assert_true(fd >= 0);
+
+	/* Test sread with timeout */
+	ret = fi_cq_sread(cq, &cq_entry, 1, NULL, 1);
+	assert_int_equal(ret, -FI_EAGAIN);
+
+	ret = fi_close(&cq->fid);
+	assert_int_equal(ret, 0);
 }
 
 /**
