@@ -22,6 +22,177 @@ const char *efa_rdm_cq_strerror(struct fid_cq *cq_fid, int prov_errno,
 		: efa_strerror(prov_errno);
 }
 
+static int efa_rdm_cq_verify_wait_attr(struct fi_cq_attr *attr)
+{
+	switch (attr->wait_obj) {
+	case FI_WAIT_NONE:
+	case FI_WAIT_UNSPEC:
+	case FI_WAIT_FD:
+		return 0;
+	default:
+		return -FI_ENOSYS;
+	}
+}
+
+static int efa_rdm_cq_trywait_efa(void *arg)
+{
+	struct fid_cq *cq_fid = (struct fid_cq *) arg;
+	struct efa_rdm_cq *cq = container_of(cq_fid, struct efa_rdm_cq, efa_cq.util_cq.cq_fid);
+	
+	return efa_cq_trywait(&cq->efa_cq);
+}
+
+static int efa_rdm_cq_trywait_shm(void *arg)
+{
+	struct fid_cq *shm_cq = (struct fid_cq *) arg;
+	
+	/* Try to read from SHM CQ to check if empty */
+	return fi_cq_read(shm_cq, NULL, 0) == -FI_EAGAIN ? FI_SUCCESS : -FI_EAGAIN;
+}
+
+static int efa_rdm_cq_setup_wait(struct efa_rdm_cq *cq, struct fi_cq_attr *attr)
+{
+	struct fi_wait_attr wait_attr = {0};
+	struct fid_wait *wait_fid;
+	int ret;
+
+	if (attr->wait_obj == FI_WAIT_NONE)
+		return 0;
+
+	wait_attr.wait_obj = (attr->wait_obj == FI_WAIT_UNSPEC) ? FI_WAIT_FD : attr->wait_obj;
+	
+	ret = ofi_wait_fd_open(&cq->efa_cq.util_cq.domain->fabric->fabric_fid, 
+			       &wait_attr, &wait_fid);
+	if (ret)
+		return ret;
+
+	cq->efa_cq.util_cq.wait = container_of(wait_fid, struct util_wait, wait_fid);
+
+	/* Add EFA CQ to wait set */
+	ret = ofi_wait_add_fid(container_of(cq->efa_cq.util_cq.wait, struct util_wait, wait_fid),
+			       &cq->efa_cq.util_cq.cq_fid.fid, POLLIN, efa_rdm_cq_trywait_efa);
+	if (ret)
+		goto close_wait;
+
+	/* Add SHM CQ to wait set if present */
+	if (cq->shm_cq) {
+		ret = ofi_wait_add_fid(container_of(cq->efa_cq.util_cq.wait, struct util_wait, wait_fid),
+				       &cq->shm_cq->fid, POLLIN, efa_rdm_cq_trywait_shm);
+		if (ret)
+			goto close_wait;
+	}
+
+	cq->efa_cq.wait_obj = wait_attr.wait_obj;
+	return 0;
+
+close_wait:
+	fi_close(&cq->efa_cq.util_cq.wait->wait_fid.fid);
+	cq->efa_cq.util_cq.wait = NULL;
+	return ret;
+}
+
+static ssize_t efa_rdm_cq_readfrom(struct fid_cq *cq_fid, void *buf, size_t count, fi_addr_t *src_addr)
+{
+	struct efa_rdm_cq *cq;
+	ssize_t ret;
+	struct efa_domain *domain;
+
+	cq = container_of(cq_fid, struct efa_rdm_cq, efa_cq.util_cq.cq_fid.fid);
+
+	domain = container_of(cq->efa_cq.util_cq.domain, struct efa_domain, util_domain);
+
+	ofi_genlock_lock(&domain->srx_lock);
+
+	if (cq->shm_cq) {
+		fi_cq_read(cq->shm_cq, NULL, 0);
+
+		/* 
+		 * fi_cq_read(cq->shm_cq, NULL, 0) will progress shm ep and write
+		 * completion to efa. Use ofi_cq_read_entries to get the number of
+		 * shm completions without progressing efa ep again.
+		 */
+		ret = ofi_cq_read_entries(&cq->efa_cq.util_cq, buf, count, src_addr);
+
+		if (ret > 0)
+			goto out;
+	}
+
+	ret = ofi_cq_readfrom(&cq->efa_cq.util_cq.cq_fid, buf, count, src_addr);
+
+out:
+	ofi_genlock_unlock(&domain->srx_lock);
+
+	return ret;
+}
+
+static ssize_t efa_rdm_cq_sreadfrom(struct fid_cq *cq_fid, void *buf, size_t count,
+				     fi_addr_t *src_addr, const void *cond, int timeout)
+{
+	struct efa_rdm_cq *cq;
+	struct util_wait *wait;
+	ssize_t ret = 0, num_completions = 0;
+	ssize_t threshold;
+	uint8_t *buffer = buf;
+
+	cq = container_of(cq_fid, struct efa_rdm_cq, efa_cq.util_cq.cq_fid);
+	
+	if (OFI_UNLIKELY(!cq->efa_cq.wait_obj)) {
+		EFA_WARN(FI_LOG_CQ, "Cannot call fi_cq_sread with FI_WAIT_NONE\n");
+		return -FI_EINVAL;
+	}
+
+	wait = container_of(cq->efa_cq.util_cq.wait, struct util_wait, wait_fid);
+	threshold = (cq->efa_cq.wait_cond == FI_CQ_COND_THRESHOLD) ?
+		    MIN((ssize_t)cond, count) : 1;
+
+	while (num_completions < threshold) {
+		/* Try to read completions first */
+		ret = efa_rdm_cq_readfrom(cq_fid, buffer, count - num_completions, 
+					  src_addr ? src_addr + num_completions : NULL);
+		if (ret > 0) {
+			buffer += ret * cq->efa_cq.entry_size;
+			num_completions += ret;
+			continue;
+		} else if (ret != -FI_EAGAIN) {
+			break;
+		}
+
+		/* CQ is empty, wait for events */
+		ret = wait->wait_fid.ops->wait(&wait->wait_fid, timeout);
+		if (ret) {
+			if (ret == -FI_ETIMEDOUT)
+				ret = -FI_EAGAIN;
+			break;
+		}
+	}
+
+	return num_completions ? num_completions : ret;
+}
+
+static ssize_t efa_rdm_cq_sread(struct fid_cq *cq_fid, void *buf, size_t count,
+				 const void *cond, int timeout)
+{
+	return efa_rdm_cq_sreadfrom(cq_fid, buf, count, NULL, cond, timeout);
+}
+
+static int efa_rdm_cq_signal(struct fid_cq *cq_fid)
+{
+	struct efa_rdm_cq *cq;
+	struct util_wait *wait;
+
+	cq = container_of(cq_fid, struct efa_rdm_cq, efa_cq.util_cq.cq_fid);
+	
+	if (OFI_UNLIKELY(!cq->efa_cq.wait_obj)) {
+		EFA_WARN(FI_LOG_CQ, "fi_cq_signal is only available if the CQ "
+			 "was configured with a wait object\n");
+		return -FI_EINVAL;
+	}
+
+	wait = container_of(cq->efa_cq.util_cq.wait, struct util_wait, wait_fid);
+	wait->signal(wait);
+	return 0;
+}
+
 /**
  * @brief close a CQ of EFA RDM endpoint
  *
@@ -48,6 +219,14 @@ int efa_rdm_cq_close(struct fid *fid)
 			return ret;
 		}
 		cq->efa_cq.ibv_cq.ibv_cq_ex = NULL;
+	}
+
+	if (cq->efa_cq.util_cq.wait) {
+		ret = fi_close(&cq->efa_cq.util_cq.wait->wait_fid.fid);
+		if (ret) {
+			EFA_WARN(FI_LOG_CQ, "Unable to close wait object: %s\n", fi_strerror(-ret));
+			retv = ret;
+		}
 	}
 
 	if (cq->shm_cq) {
@@ -820,48 +999,14 @@ int efa_rdm_cq_poll_ibv_cq(ssize_t cqe_to_process, struct efa_ibv_cq *ibv_cq)
 	return err;
 }
 
-static ssize_t efa_rdm_cq_readfrom(struct fid_cq *cq_fid, void *buf, size_t count, fi_addr_t *src_addr)
-{
-	struct efa_rdm_cq *cq;
-	ssize_t ret;
-	struct efa_domain *domain;
-
-	cq = container_of(cq_fid, struct efa_rdm_cq, efa_cq.util_cq.cq_fid.fid);
-
-	domain = container_of(cq->efa_cq.util_cq.domain, struct efa_domain, util_domain);
-
-	ofi_genlock_lock(&domain->srx_lock);
-
-	if (cq->shm_cq) {
-		fi_cq_read(cq->shm_cq, NULL, 0);
-
-		/* 
-		 * fi_cq_read(cq->shm_cq, NULL, 0) will progress shm ep and write
-		 * completion to efa. Use ofi_cq_read_entries to get the number of
-		 * shm completions without progressing efa ep again.
-		 */
-		ret = ofi_cq_read_entries(&cq->efa_cq.util_cq, buf, count, src_addr);
-
-		if (ret > 0)
-			goto out;
-	}
-
-	ret = ofi_cq_readfrom(&cq->efa_cq.util_cq.cq_fid, buf, count, src_addr);
-
-out:
-	ofi_genlock_unlock(&domain->srx_lock);
-
-	return ret;
-}
-
 static struct fi_ops_cq efa_rdm_cq_ops = {
 	.size = sizeof(struct fi_ops_cq),
 	.read = ofi_cq_read,
 	.readfrom = efa_rdm_cq_readfrom,
 	.readerr = ofi_cq_readerr,
-	.sread = fi_no_cq_sread,
-	.sreadfrom = fi_no_cq_sreadfrom,
-	.signal = fi_no_cq_signal,
+	.sread = efa_rdm_cq_sread,
+	.sreadfrom = efa_rdm_cq_sreadfrom,
+	.signal = efa_rdm_cq_signal,
 	.strerror = efa_rdm_cq_strerror,
 };
 
@@ -926,8 +1071,9 @@ int efa_rdm_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	struct fi_peer_cq_context peer_cq_context = {0};
 	struct fi_efa_cq_init_attr efa_cq_init_attr = {0};
 
-	if (attr->wait_obj != FI_WAIT_NONE)
-		return -FI_ENOSYS;
+	ret = efa_rdm_cq_verify_wait_attr(attr);
+	if (ret)
+		return ret;
 
 	cq = calloc(1, sizeof(*cq));
 	if (!cq)
@@ -975,7 +1121,19 @@ int efa_rdm_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		}
 	}
 
+	ret = efa_rdm_cq_setup_wait(cq, attr);
+	if (ret) {
+		EFA_WARN(FI_LOG_CQ, "Unable to setup wait object: %s\n", fi_strerror(-ret));
+		goto close_shm_cq;
+	}
+
 	return 0;
+
+close_shm_cq:
+	if (cq->shm_cq) {
+		fi_close(&cq->shm_cq->fid);
+	}
+	goto destroy_ibv_cq;
 destroy_ibv_cq:
 	retv = -ibv_destroy_cq(ibv_cq_ex_to_cq(cq->efa_cq.ibv_cq.ibv_cq_ex));
 	if (retv)
