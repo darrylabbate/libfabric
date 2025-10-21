@@ -91,8 +91,6 @@ def test_rma_bw_sread(cmdline_args, rma_operation_type, rma_bw_completion_semant
                       direct_rma_size, rma_bw_memory_type, support_sread, comp_method, rma_fabric):
     if not support_sread:
         pytest.skip("sread not supported by efa device.")
-    if rma_fabric == "efa":
-        pytest.skip("sread not implemented in efa fabric yet.")
     command = f"fi_rma_bw -e rdm -c {comp_method}"
     command = command + " -o " + rma_operation_type
     # rma_bw test with data verification takes longer to finish
