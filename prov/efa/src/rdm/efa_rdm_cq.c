@@ -74,6 +74,14 @@ int efa_rdm_cq_close(struct fid *fid)
 	}
 
 	if (cq->shm_cq) {
+		/* Remove SHM CQ FD from wait object if it was added */
+		if (cq->shm_cq_fd >= 0 && cq->efa_cq.util_cq.wait) {
+			ret = ofi_wait_del_fd(cq->efa_cq.util_cq.wait, cq->shm_cq_fd);
+			if (ret)
+				EFA_WARN(FI_LOG_CQ, "Failed to remove SHM CQ FD from wait: %s\n",
+					 fi_strerror(-ret));
+		}
+
 		ret = fi_close(&cq->shm_cq->fid);
 		if (ret) {
 			EFA_WARN(FI_LOG_CQ, "Unable to close shm cq: %s\n", fi_strerror(-ret));
@@ -1073,6 +1081,15 @@ static int efa_rdm_cq_verify_wait_attr(const struct fi_cq_attr *attr)
 	return FI_SUCCESS;
 }
 
+static int efa_rdm_cq_shm_trywait(void *arg)
+{
+	struct fid_cq *shm_cq = arg;
+	struct util_cq *util_cq = container_of(shm_cq, struct util_cq, cq_fid);
+	struct fid *fids[1] = {&shm_cq->fid};
+
+	return fi_trywait(&util_cq->domain->fabric->fabric_fid, fids, 1);
+}
+
 /**
  * @brief create a CQ for EFA RDM provider
  *
@@ -1095,6 +1112,7 @@ int efa_rdm_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	struct fi_cq_attr shm_cq_attr = {0};
 	struct fi_peer_cq_context peer_cq_context = {0};
 	struct fi_efa_cq_init_attr efa_cq_init_attr = {0};
+	int shm_fd = -1;
 
 	ret = efa_rdm_cq_verify_wait_attr(attr);
 	if (ret)
@@ -1157,6 +1175,27 @@ int efa_rdm_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 			EFA_WARN(FI_LOG_CQ, "Unable to open shm cq: %s\n", fi_strerror(-ret));
 			goto destroy_ibv_cq;
 		}
+
+		/* Add SHM CQ FD to wait object if available */
+		if (cq->efa_cq.util_cq.wait && cq->efa_cq.wait_obj == FI_WAIT_FD) {
+			ret = fi_control(&cq->shm_cq->fid, FI_GETWAIT, &shm_fd);
+			if (ret == -FI_ENOSYS) {
+				EFA_INFO(FI_LOG_CQ, "SHM provider does not support FI_GETWAIT\n");
+			} else if (ret) {
+				EFA_WARN(FI_LOG_CQ, "Failed to get SHM CQ wait object: %s\n",
+					 fi_strerror(-ret));
+			} else if (shm_fd >= 0) {
+				ret = ofi_wait_add_fd(cq->efa_cq.util_cq.wait, shm_fd, POLLIN,
+						      efa_rdm_cq_shm_trywait, cq->shm_cq, &cq->shm_cq->fid);
+				if (ret) {
+					EFA_WARN(FI_LOG_CQ, "Failed to add SHM CQ FD to wait: %s\n",
+						 fi_strerror(-ret));
+				} else {
+					EFA_INFO(FI_LOG_CQ, "Added SHM CQ FD %d to wait object\n", shm_fd);
+				}
+			}
+		}
+		cq->shm_cq_fd = shm_fd;
 	}
 
 	return 0;

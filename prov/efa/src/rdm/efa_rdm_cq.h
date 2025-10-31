@@ -12,6 +12,7 @@ struct efa_rdm_cq {
 	struct fid_cq *shm_cq;
 	struct dlist_entry ibv_cq_poll_list;
 	bool need_to_scan_ep_list;
+	int shm_cq_fd;
 };
 
 int efa_rdm_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
