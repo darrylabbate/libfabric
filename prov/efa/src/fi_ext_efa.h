@@ -8,6 +8,7 @@
 
 #define FI_EFA_DOMAIN_OPS "efa domain ops"
 #define FI_EFA_GDA_OPS "efa gda ops"
+#define FI_EFA_FEATURE_OPS "efa feature ops"
 
 struct fi_efa_mr_attr {
     uint16_t ic_id_validity;
@@ -66,6 +67,55 @@ struct fi_efa_ops_gda {
 			   struct fi_efa_cq_init_attr *efa_cq_init_attr,
 			   struct fid_cq **cq_fid, void *context);
 	uint64_t (*get_mr_lkey)(struct fid_mr *mr);
+};
+
+/*
+ * EFA feature IDs. Stable, additive-only: never renumber.
+ *
+ * Features are runtime-discoverable flags advertised by the provider. They
+ * allow consumers to detect the presence of a given behaviour or bug fix
+ * independently of the libfabric API version, which cannot encode patch
+ * releases.
+ */
+enum {
+	/*
+	 * Provider correctly inspects every descriptor in a multi-iov
+	 * request for HMEM/iface (not just desc[0]). Datatype FI_UINT8,
+	 * read returns 0 or 1.
+	 */
+	FI_EFA_FEATURE_MIXED_HMEM_IOV = 1,
+};
+
+struct fi_efa_feature_desc {
+	uint32_t id;
+	enum fi_datatype datatype;
+	size_t size;
+	const char *name;
+	const char *desc;
+};
+
+struct fi_efa_feature_ops {
+	/*
+	 * Enumerate features advertised by this provider build.
+	 *
+	 * On entry *count is the number of entries in list. On exit *count
+	 * is set to the number of entries written on success, or the number
+	 * required if -FI_ETOOSMALL is returned. Passing list == NULL (with
+	 * *count == 0) returns the required size via *count.
+	 */
+	ssize_t (*query)(struct fid_domain *domain_fid,
+			 struct fi_efa_feature_desc *list, size_t *count);
+
+	/*
+	 * Read the value of a feature by id.
+	 *
+	 * On entry *size is the caller's buffer capacity. On exit *size is
+	 * the number of bytes written. Returns -FI_ENODATA if id is not
+	 * advertised by this build, or -FI_ETOOSMALL if the buffer is too
+	 * small.
+	 */
+	ssize_t (*read)(struct fid_domain *domain_fid, uint32_t id,
+			void *data, size_t *size);
 };
 
 #endif /* _FI_EXT_EFA_H_ */

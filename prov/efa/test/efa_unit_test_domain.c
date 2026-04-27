@@ -764,3 +764,102 @@ void test_efa_domain_open_ops_get_mr_lkey(struct efa_resource **state)
     assert_int_equal(ret, FI_SUCCESS);
     assert_true(lkey == mr.ibv_mr->lkey);
 }
+
+/**
+ * @brief Verify fi_open_ops(FI_EFA_FEATURE_OPS) succeeds and returns a
+ * table with both function pointers populated.
+ */
+void test_efa_domain_open_ops_feature(struct efa_resource **state)
+{
+    struct efa_resource *resource = *state;
+    struct fi_efa_feature_ops *feat_ops;
+    int ret;
+
+    efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_FABRIC_NAME);
+
+    ret = fi_open_ops(&resource->domain->fid, FI_EFA_FEATURE_OPS, 0,
+                      (void **) &feat_ops, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(feat_ops->query);
+    assert_non_null(feat_ops->read);
+}
+
+/**
+ * @brief Verify query() enumerates advertised features, including
+ * MIXED_HMEM_IOV, and supports size-query via NULL list / *count == 0.
+ */
+void test_efa_domain_open_ops_feature_query(struct efa_resource **state)
+{
+    struct efa_resource *resource = *state;
+    struct fi_efa_feature_ops *feat_ops;
+    struct fi_efa_feature_desc list[8];
+    size_t count, required;
+    ssize_t n;
+    size_t i;
+    bool saw_mixed_hmem_iov = false;
+    int ret;
+
+    efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_FABRIC_NAME);
+
+    ret = fi_open_ops(&resource->domain->fid, FI_EFA_FEATURE_OPS, 0,
+                      (void **) &feat_ops, NULL);
+    assert_int_equal(ret, 0);
+
+    /* Size-query mode: list == NULL && *count == 0 reports required. */
+    required = 0;
+    n = feat_ops->query(resource->domain, NULL, &required);
+    assert_int_equal(n, 0);
+    assert_true(required >= 1);
+    assert_true(required <= ARRAY_SIZE(list));
+
+    /* Full enumeration. */
+    count = ARRAY_SIZE(list);
+    n = feat_ops->query(resource->domain, list, &count);
+    assert_true(n > 0);
+    assert_int_equal((size_t) n, required);
+    assert_int_equal(count, required);
+
+    for (i = 0; i < count; i++) {
+        if (list[i].id == FI_EFA_FEATURE_MIXED_HMEM_IOV) {
+            saw_mixed_hmem_iov = true;
+            assert_int_equal(list[i].datatype, FI_UINT8);
+            assert_int_equal(list[i].size, sizeof(uint8_t));
+            assert_non_null(list[i].name);
+            assert_non_null(list[i].desc);
+        }
+    }
+    assert_true(saw_mixed_hmem_iov);
+}
+
+/**
+ * @brief Verify read() returns 1 for MIXED_HMEM_IOV and -FI_ENODATA
+ * for an unknown feature id.
+ */
+void test_efa_domain_open_ops_feature_read(struct efa_resource **state)
+{
+    struct efa_resource *resource = *state;
+    struct fi_efa_feature_ops *feat_ops;
+    uint8_t val = 0;
+    size_t size;
+    ssize_t n;
+    int ret;
+
+    efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_FABRIC_NAME);
+
+    ret = fi_open_ops(&resource->domain->fid, FI_EFA_FEATURE_OPS, 0,
+                      (void **) &feat_ops, NULL);
+    assert_int_equal(ret, 0);
+
+    size = sizeof(val);
+    n = feat_ops->read(resource->domain, FI_EFA_FEATURE_MIXED_HMEM_IOV,
+                       &val, &size);
+    assert_int_equal(n, sizeof(uint8_t));
+    assert_int_equal(size, sizeof(uint8_t));
+    assert_int_equal(val, 1);
+
+    /* Unknown id must produce -FI_ENODATA. Use a large id unlikely to
+     * collide with future additions. */
+    size = sizeof(val);
+    n = feat_ops->read(resource->domain, 0xffffffff, &val, &size);
+    assert_int_equal(n, -FI_ENODATA);
+}

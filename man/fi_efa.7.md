@@ -255,6 +255,66 @@ struct fi_efa_mr_attr {
 (which indicates the failure reason).
 
 
+Requesting `FI_EFA_FEATURE_OPS` in `name` returns `ops` as a pointer to the
+function table `fi_efa_feature_ops` defined as follows:
+
+```c
+struct fi_efa_feature_ops {
+	ssize_t (*query)(struct fid_domain *domain_fid,
+			 struct fi_efa_feature_desc *list, size_t *count);
+	ssize_t (*read)(struct fid_domain *domain_fid, uint32_t id,
+			void *data, size_t *size);
+};
+```
+
+Features are runtime-discoverable flags advertised by the provider. They
+allow consumers to detect the presence of a given behaviour or bug fix
+independently of the libfabric API version, which cannot encode patch
+releases. Older provider builds do not expose `FI_EFA_FEATURE_OPS` at
+all, so `fi_open_ops()` returns `-FI_EINVAL` for the key; callers can
+treat that as "no features advertised".
+
+Feature IDs are stable and additive-only. The currently defined IDs are:
+
+*FI_EFA_FEATURE_MIXED_HMEM_IOV*
+:	The provider inspects every descriptor in a multi-iov request for
+	HMEM/iface (rather than only the first descriptor). Datatype
+	`FI_UINT8`, value 0 or 1.
+
+### query
+Enumerate the features advertised by this provider build into *list*.
+On entry *\*count* is the capacity of *list*. On exit *\*count* is set
+to the number of entries written, or (if the return value is
+`-FI_ETOOSMALL`) the number required. Passing *list* as `NULL` with
+*\*count* as 0 returns the required size via *\*count*.
+
+Each entry is a `struct fi_efa_feature_desc`:
+
+```c
+struct fi_efa_feature_desc {
+	uint32_t id;
+	enum fi_datatype datatype;
+	size_t size;
+	const char *name;
+	const char *desc;
+};
+```
+
+#### Return value
+**query()** returns the number of entries written on success, or a
+negative error code on failure.
+
+### read
+Read the value of a feature by *id* into the caller's buffer. On entry
+*\*size* is the buffer capacity. On exit *\*size* is the number of bytes
+written (or required, if the return value is `-FI_ETOOSMALL`).
+
+#### Return value
+**read()** returns the number of bytes written on success,
+`-FI_ENODATA` if *id* is not advertised by this build, `-FI_ETOOSMALL`
+if the buffer is too small, or another negative error code on failure.
+
+
 To enable GPU Direct Async (GDA), which allows the GPU to interact directly with the NIC, 
 request `FI_EFA_GDA_OPS` in the `name` parameter with efa-direct fabirc.
 This returns `ops` as a pointer to the function table `fi_efa_ops_gda` defined as follows:

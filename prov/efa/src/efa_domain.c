@@ -750,6 +750,84 @@ static struct fi_efa_ops_domain efa_ops_domain = {
 	.query_mr = efa_domain_query_mr,
 };
 
+/*
+ * Catalogue of features advertised by this build. To publish a new feature,
+ * add an FI_EFA_FEATURE_* id to fi_ext_efa.h and a row here.
+ */
+static const struct fi_efa_feature_desc efa_feature_catalogue[] = {
+	{
+		.id = FI_EFA_FEATURE_MIXED_HMEM_IOV,
+		.datatype = FI_UINT8,
+		.size = sizeof(uint8_t),
+		.name = "mixed_hmem_iov",
+		.desc = "Provider inspects every descriptor in a multi-iov "
+			"request for HMEM/iface, not just desc[0].",
+	},
+};
+
+static ssize_t efa_domain_feature_query(struct fid_domain *domain_fid,
+					struct fi_efa_feature_desc *list,
+					size_t *count)
+{
+	size_t avail = ARRAY_SIZE(efa_feature_catalogue);
+	size_t cap;
+
+	if (!count)
+		return -FI_EINVAL;
+
+	cap = *count;
+	*count = avail;
+
+	if (!list)
+		return (cap == 0) ? 0 : -FI_EINVAL;
+
+	if (cap < avail)
+		return -FI_ETOOSMALL;
+
+	memcpy(list, efa_feature_catalogue, avail * sizeof(*list));
+	return avail;
+}
+
+static ssize_t efa_domain_feature_read(struct fid_domain *domain_fid,
+				       uint32_t id, void *data, size_t *size)
+{
+	size_t i;
+
+	if (!data || !size)
+		return -FI_EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(efa_feature_catalogue); i++) {
+		const struct fi_efa_feature_desc *d = &efa_feature_catalogue[i];
+
+		if (d->id != id)
+			continue;
+
+		if (*size < d->size) {
+			*size = d->size;
+			return -FI_ETOOSMALL;
+		}
+
+		switch (id) {
+		case FI_EFA_FEATURE_MIXED_HMEM_IOV:
+			*(uint8_t *)data = 1;
+			break;
+		default:
+			/* Catalogue row without a read handler is a bug. */
+			return -FI_ENOSYS;
+		}
+
+		*size = d->size;
+		return d->size;
+	}
+
+	return -FI_ENODATA;
+}
+
+static struct fi_efa_feature_ops efa_feature_ops = {
+	.query = efa_domain_feature_query,
+	.read = efa_domain_feature_read,
+};
+
 static struct fi_efa_ops_gda efa_ops_gda = {
 	.query_addr = efa_domain_query_addr,
 	.query_qp_wqs = efa_domain_query_qp_wqs,
@@ -767,6 +845,10 @@ efa_domain_ops_open(struct fid *fid, const char *ops_name, uint64_t flags,
 
 	if (strcmp(ops_name, FI_EFA_DOMAIN_OPS) == 0) {
 		*ops = &efa_ops_domain;
+		return ret;
+	}
+	if (strcmp(ops_name, FI_EFA_FEATURE_OPS) == 0) {
+		*ops = &efa_feature_ops;
 		return ret;
 	}
 	if (strcmp(ops_name, FI_EFA_GDA_OPS) == 0) {
