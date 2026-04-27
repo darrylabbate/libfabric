@@ -764,3 +764,39 @@ void test_efa_domain_open_ops_get_mr_lkey(struct efa_resource **state)
     assert_int_equal(ret, FI_SUCCESS);
     assert_true(lkey == mr.ibv_mr->lkey);
 }
+
+/**
+ * @brief Verify query() returns true for a feature this build advertises.
+ */
+void test_efa_fabric_open_ops_feature_known(struct efa_resource **state)
+{
+    struct efa_resource *resource = *state;
+    struct fi_efa_feature_ops *feat_ops;
+    int ret;
+
+    efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_FABRIC_NAME);
+
+    ret = fi_open_ops(&resource->fabric->fid, FI_EFA_FEATURE_OPS, 0,
+                      (void **) &feat_ops, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(feat_ops->query);
+    assert_true(feat_ops->query("mixed_hmem_iov"));
+}
+
+/**
+ * @brief Verify query() returns false for an unknown feature and for NULL.
+ */
+void test_efa_fabric_open_ops_feature_unknown(struct efa_resource **state)
+{
+    struct efa_resource *resource = *state;
+    struct fi_efa_feature_ops *feat_ops;
+    int ret;
+
+    efa_unit_test_resource_construct(resource, FI_EP_RDM, EFA_FABRIC_NAME);
+
+    ret = fi_open_ops(&resource->fabric->fid, FI_EFA_FEATURE_OPS, 0,
+                      (void **) &feat_ops, NULL);
+    assert_int_equal(ret, 0);
+    assert_false(feat_ops->query("no_such_feature"));
+    assert_false(feat_ops->query(NULL));
+}

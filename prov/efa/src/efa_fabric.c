@@ -104,12 +104,51 @@ static int efa_trywait(struct fid_fabric *fabric, struct fid **fids, int count)
 	return FI_SUCCESS;
 }
 
+/*
+ * Feature strings advertised by this build. Add a string here to publish
+ * a new feature. Consumers query by literal string, so renumbering or
+ * renaming is a breaking change; prefer adding new strings over editing.
+ */
+static const char * const efa_features[] = {
+	"mixed_hmem_iov",
+};
+
+static bool efa_fabric_feature_query(const char *feature)
+{
+	size_t i;
+
+	if (!feature)
+		return false;
+
+	for (i = 0; i < ARRAY_SIZE(efa_features); i++)
+		if (strcmp(efa_features[i], feature) == 0)
+			return true;
+
+	return false;
+}
+
+static struct fi_efa_feature_ops efa_feature_ops = {
+	.query = efa_fabric_feature_query,
+};
+
+static int efa_fabric_ops_open(struct fid *fid, const char *ops_name,
+			       uint64_t flags, void **ops, void *context)
+{
+	if (strcmp(ops_name, FI_EFA_FEATURE_OPS) == 0) {
+		*ops = &efa_feature_ops;
+		return FI_SUCCESS;
+	}
+
+	EFA_WARN(FI_LOG_FABRIC, "Unknown ops name: %s\n", ops_name);
+	return -FI_EINVAL;
+}
+
 static struct fi_ops efa_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = efa_fabric_close,
 	.bind = fi_no_bind,
 	.control = fi_no_control,
-	.ops_open = fi_no_ops_open,
+	.ops_open = efa_fabric_ops_open,
 };
 
 static struct fi_ops_fabric efa_ops_fabric = {

@@ -255,6 +255,35 @@ struct fi_efa_mr_attr {
 (which indicates the failure reason).
 
 
+Requesting `FI_EFA_FEATURE_OPS` in `name` returns `ops` as a pointer to the
+function table `fi_efa_feature_ops` defined as follows:
+
+```c
+struct fi_efa_feature_ops {
+	bool (*query)(const char *feature);
+};
+```
+
+Features are runtime-discoverable flags advertised by the provider,
+letting consumers detect the presence of a given behavior or bug fix
+independently of the libfabric API version (which cannot encode patch
+releases). The ops are exposed at fabric scope so consumers can probe
+features immediately after `fi_fabric()`, before any domain is opened.
+Older provider builds do not expose `FI_EFA_FEATURE_OPS` at all, so
+`fi_open_ops()` returns `-FI_EINVAL` for the key; callers can treat
+that as "no features advertised".
+
+Currently defined feature strings:
+
+*"mixed_hmem_iov"*
+:	The provider correctly inspects every descriptor in a multi-iov
+	request for HMEM/iface, rather than only the first descriptor.
+
+### query
+Return `true` if the provider build advertises *feature*, otherwise
+`false`. Passing an unknown string (including `NULL`) returns `false`.
+
+
 To enable GPU Direct Async (GDA), which allows the GPU to interact directly with the NIC, 
 request `FI_EFA_GDA_OPS` in the `name` parameter with efa-direct fabirc.
 This returns `ops` as a pointer to the function table `fi_efa_ops_gda` defined as follows:
