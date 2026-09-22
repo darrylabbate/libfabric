@@ -153,6 +153,8 @@ void efa_rdm_proto_select_emulated_write_protocol(struct efa_rdm_ep *ep,
 						  bool use_p2p,
 						  struct efa_rdm_proto **proto);
 
+void efa_rdm_proto_handle_receipt_recv(struct efa_rdm_pke *pkt_entry);
+
 /* Utility funcions */
 
 void efa_rdm_proto_txe_init_buffers(struct efa_rdm_ep *ep,
