@@ -65,8 +65,41 @@ static struct efa_rdm_proto * const efa_rdm_emulated_write_protocols[] = {
 	NULL,
 };
 
+#ifndef EFA_RDM_RX_PROTO_LOOKUP_TABLE
+#define EFA_RDM_RX_PROTO_LOOKUP_TABLE 1
+#endif
+
+#if EFA_RDM_RX_PROTO_LOOKUP_TABLE
+static struct efa_rdm_proto * const
+efa_rdm_receive_protocols[EFA_RDM_EXTRA_REQ_PKT_END] = {
+	[EFA_RDM_EAGER_MSGRTM_PKT] = &efa_rdm_proto_eager,
+	[EFA_RDM_EAGER_TAGRTM_PKT] = &efa_rdm_proto_eager,
+	[EFA_RDM_MEDIUM_MSGRTM_PKT] = &efa_rdm_proto_medium,
+	[EFA_RDM_MEDIUM_TAGRTM_PKT] = &efa_rdm_proto_medium,
+	[EFA_RDM_LONGCTS_MSGRTM_PKT] = &efa_rdm_proto_longcts,
+	[EFA_RDM_LONGCTS_TAGRTM_PKT] = &efa_rdm_proto_longcts,
+	[EFA_RDM_LONGREAD_MSGRTM_PKT] = &efa_rdm_proto_longread,
+	[EFA_RDM_LONGREAD_TAGRTM_PKT] = &efa_rdm_proto_longread,
+	[EFA_RDM_DC_EAGER_MSGRTM_PKT] = &efa_rdm_proto_eager,
+	[EFA_RDM_DC_EAGER_TAGRTM_PKT] = &efa_rdm_proto_eager,
+	[EFA_RDM_DC_MEDIUM_MSGRTM_PKT] = &efa_rdm_proto_medium,
+	[EFA_RDM_DC_MEDIUM_TAGRTM_PKT] = &efa_rdm_proto_medium,
+	[EFA_RDM_DC_LONGCTS_MSGRTM_PKT] = &efa_rdm_proto_longcts,
+	[EFA_RDM_DC_LONGCTS_TAGRTM_PKT] = &efa_rdm_proto_longcts,
+	[EFA_RDM_RUNTREAD_MSGRTM_PKT] = &efa_rdm_proto_runtread,
+	[EFA_RDM_RUNTREAD_TAGRTM_PKT] = &efa_rdm_proto_runtread,
+};
+#endif
+
 struct efa_rdm_proto *efa_rdm_proto_select_receive_protocol(int pkt_type)
 {
+#if EFA_RDM_RX_PROTO_LOOKUP_TABLE
+	if (OFI_UNLIKELY((unsigned int) pkt_type >=
+			 ARRAY_SIZE(efa_rdm_receive_protocols)))
+		return NULL;
+
+	return efa_rdm_receive_protocols[pkt_type];
+#else
 	if (efa_rdm_pkt_type_is_eager_rtm(pkt_type))
 		return &efa_rdm_proto_eager;
 
@@ -84,6 +117,7 @@ struct efa_rdm_proto *efa_rdm_proto_select_receive_protocol(int pkt_type)
 		return &efa_rdm_proto_runtread;
 
 	return NULL;
+#endif
 }
 
 void efa_rdm_proto_handle_receipt_recv(struct efa_rdm_pke *pkt_entry)

@@ -33,6 +33,8 @@ TEST(EfaRdmProtoRxTest, selects_protocol_with_receive_callbacks)
 	EXPECT_EQ(res.selected_count, res.case_count);
 	EXPECT_EQ(res.callbacks_set_count, res.case_count);
 	EXPECT_TRUE(res.unsupported_is_null);
+	EXPECT_TRUE(res.negative_is_null);
+	EXPECT_TRUE(res.out_of_range_is_null);
 }
 
 class EfaRdmProtoTest : public Test

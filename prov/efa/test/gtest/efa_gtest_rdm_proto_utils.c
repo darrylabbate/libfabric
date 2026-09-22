@@ -98,6 +98,9 @@ void efa_test_proto_selects_protocol_with_receive_callbacks(
 	}
 	out->unsupported_is_null =
 		!efa_rdm_proto_select_receive_protocol(EFA_RDM_WRITE_RTA_PKT);
+	out->negative_is_null = !efa_rdm_proto_select_receive_protocol(-1);
+	out->out_of_range_is_null = !efa_rdm_proto_select_receive_protocol(
+		EFA_RDM_EXTRA_REQ_PKT_END);
 }
 
 static struct efa_rdm_ep *efa_test_proto_ep(struct fid_ep *ep)

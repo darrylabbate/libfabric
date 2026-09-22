@@ -33,6 +33,8 @@ struct efa_test_proto_rx_selection_result {
 	size_t selected_count;
 	size_t callbacks_set_count;
 	int unsupported_is_null;
+	int negative_is_null;
+	int out_of_range_is_null;
 };
 
 void efa_test_proto_callbacks_preserve_return_values(
