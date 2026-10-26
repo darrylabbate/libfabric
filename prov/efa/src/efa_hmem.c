@@ -257,7 +257,7 @@ static inline void efa_hmem_info_check_p2p_support_cuda(struct efa_hmem_info *in
 	 * allocating and registering a CUDA buffer, so that fi_getinfo does
 	 * not initialize a CUDA context.
 	 */
-	ret = efa_hmem_get_instance_type(instance_type, sizeof(instance_type));
+	ret = efa_hmem_get_instance_type(instance_type, sizeof instance_type);
 	if (ret) {
 		EFA_INFO(FI_LOG_CORE,
 			 "Unable to determine EC2 instance type from %s: %s. "
