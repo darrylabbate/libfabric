@@ -173,8 +173,7 @@ bool efa_instance_type_supports_gdr(const char *instance_type)
 	 *
 	 * Entries are exact instance types (no prefix matching), since support
 	 * can differ between sizes of the same family. Keep this list sorted in
-	 * strcmp() order; a unit test enforces this to catch duplicates. To
-	 * regenerate the order, pipe the entries through `LC_ALL=C sort`.
+	 * strcmp() order (pipe the entries through `LC_ALL=C sort`).
 	 */
 	static const char *const unsupported[] = {
 		"g4dn.12xlarge",
@@ -201,9 +200,7 @@ bool efa_instance_type_supports_gdr(const char *instance_type)
 		"p3dn.24xlarge",
 		"p5.4xlarge",
 	};
-	size_t i;
-
-	for (i = 0; i < ARRAY_SIZE(unsupported); i++) {
+	for (size_t i = 0; i < ARRAY_SIZE(unsupported); i++) {
 		if (!strcmp(instance_type, unsupported[i]))
 			return false;
 	}
