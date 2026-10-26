@@ -160,6 +160,7 @@ static int efa_unit_test_mocks_teardown(void **state)
 
 static struct ofi_hmem_ops g_hmem_ops_backup[OFI_HMEM_MAX];
 static struct fi_info *g_prov_info_backup;
+static char *g_instance_type_file_backup;
 
 /* Runs before every hmem test */
 static int efa_unit_test_hmem_setup(void **state)
@@ -182,6 +183,7 @@ static int efa_unit_test_hmem_setup(void **state)
 		return ret;
 
 	memcpy(g_hmem_ops_backup, hmem_ops, sizeof(g_hmem_ops_backup));
+	g_instance_type_file_backup = efa_env.instance_type_file;
 
 	/* Deep copy the entire prov_info list */
 	g_prov_info_backup = NULL;
@@ -208,6 +210,7 @@ static int efa_unit_test_hmem_teardown(void **state)
 {
 	memcpy(hmem_ops, g_hmem_ops_backup, sizeof(g_hmem_ops_backup));
 	ofi_hmem_disable_p2p = 0;
+	efa_env.instance_type_file = g_instance_type_file_backup;
 
 	/* Restore prov_info to pre-test state */
 	fi_freeinfo((struct fi_info *)efa_util_prov.info);
