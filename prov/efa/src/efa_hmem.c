@@ -268,10 +268,11 @@ static inline void efa_hmem_info_check_p2p_support_cuda(struct efa_hmem_info *in
 	} else {
 		info->p2p_supported_by_device =
 			!efa_instance_type_gdr_unsupported(instance_type);
-		EFA_INFO(FI_LOG_CORE, "Instance type %s %s CUDA P2P\n",
-			 instance_type,
-			 info->p2p_supported_by_device ? "supports" :
-							  "does not support");
+		EFA_INFO(FI_LOG_CORE,
+			 info->p2p_supported_by_device ?
+				 "Assuming CUDA P2P support for instance type %s\n" :
+				 "Instance type %s is known not to support CUDA P2P\n",
+			 instance_type);
 	}
 
 	/*
