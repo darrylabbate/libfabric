@@ -159,8 +159,9 @@ void test_efa_instance_type_supports_gdr(void **state)
 /**
  * @brief Initialize CUDA hmem info with a given instance type file content
  *
- * ofi_cudaMalloc is mocked to fail the test if called, since determining
- * p2p support must not allocate CUDA memory.
+ * ofi_cudaMalloc, ofi_cuCtxCreate_v2 and ofi_cuMemAlloc are mocked to fail the
+ * test if called, since determining p2p support must not allocate CUDA memory
+ * or create a CUDA context.
  *
  * @param[in]	instance_type	Content of the instance type file, or NULL
  *				to use a non-existent file
@@ -181,8 +182,17 @@ static void test_efa_hmem_info_cuda_instance_type_impl(const char *instance_type
 						     "/nonexistent/product_name";
 
 	hmem_ops[FI_HMEM_CUDA].initialized = true;
+	/*
+	 * The instance-type path must not allocate device memory or create a
+	 * CUDA context. These mocks have no queued return, so any call aborts
+	 * the test.
+	 */
 	g_efa_unit_test_mocks.ofi_cudaMalloc =
 		efa_mock_ofi_cudaMalloc_return_mock;
+	g_efa_unit_test_mocks.ofi_cuCtxCreate_v2 =
+		efa_mock_ofi_cuCtxCreate_v2_return_mock;
+	g_efa_unit_test_mocks.ofi_cuMemAlloc =
+		efa_mock_ofi_cuMemAlloc_return_mock;
 
 	ret = efa_hmem_info_initialize();
 
