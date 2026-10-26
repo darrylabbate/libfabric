@@ -132,27 +132,27 @@ void test_efa_hmem_info_disable_p2p_cuda(void **state)
 /**
  * @brief Verify instance types are matched exactly against the blocklist
  */
-void test_efa_instance_type_supports_gdr(void **state)
+void test_efa_instance_type_gdr_unsupported(void **state)
 {
 	/* Listed */
-	assert_false(efa_instance_type_supports_gdr("g5.48xlarge"));
-	assert_false(efa_instance_type_supports_gdr("p5.4xlarge"));
-	assert_false(efa_instance_type_supports_gdr("g7e.8xlarge"));
+	assert_true(efa_instance_type_gdr_unsupported("g5.48xlarge"));
+	assert_true(efa_instance_type_gdr_unsupported("p5.4xlarge"));
+	assert_true(efa_instance_type_gdr_unsupported("g7e.8xlarge"));
 
 	/* Unlisted sizes of families with listed sizes */
-	assert_true(efa_instance_type_supports_gdr("p5.48xlarge"));
-	assert_true(efa_instance_type_supports_gdr("g7e.12xlarge"));
-	assert_true(efa_instance_type_supports_gdr("p4d.24xlarge"));
+	assert_false(efa_instance_type_gdr_unsupported("p5.48xlarge"));
+	assert_false(efa_instance_type_gdr_unsupported("g7e.12xlarge"));
+	assert_false(efa_instance_type_gdr_unsupported("p4d.24xlarge"));
 
 	/* Similar names */
-	assert_true(efa_instance_type_supports_gdr("p4de.24xlarge"));
-	assert_true(efa_instance_type_supports_gdr("g5g.16xlarge"));
-	assert_true(efa_instance_type_supports_gdr("g5"));
-	assert_true(efa_instance_type_supports_gdr("g5.48xlarge2"));
+	assert_false(efa_instance_type_gdr_unsupported("p4de.24xlarge"));
+	assert_false(efa_instance_type_gdr_unsupported("g5g.16xlarge"));
+	assert_false(efa_instance_type_gdr_unsupported("g5"));
+	assert_false(efa_instance_type_gdr_unsupported("g5.48xlarge2"));
 
 	/* Unknown */
-	assert_true(efa_instance_type_supports_gdr(""));
-	assert_true(efa_instance_type_supports_gdr("HVM domU"));
+	assert_false(efa_instance_type_gdr_unsupported(""));
+	assert_false(efa_instance_type_gdr_unsupported("HVM domU"));
 }
 
 #if HAVE_CUDA

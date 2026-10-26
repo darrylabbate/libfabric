@@ -282,7 +282,7 @@ void test_efa_hmem_info_p2p_dmabuf_assumed_neuron(void **state);
 void test_efa_hmem_info_p2p_disabled_neuron(void **state);
 void test_efa_hmem_info_p2p_disabled_synapse(void **state);
 void test_efa_hmem_info_disable_p2p_cuda(void **state);
-void test_efa_instance_type_supports_gdr(void **state);
+void test_efa_instance_type_gdr_unsupported(void **state);
 void test_efa_hmem_info_cuda_p2p_instance_type_unsupported(void **state);
 void test_efa_hmem_info_cuda_p2p_instance_type_supported(void **state);
 void test_efa_hmem_info_cuda_p2p_instance_type_missing(void **state);

@@ -156,14 +156,15 @@ static int efa_hmem_info_init_protocol_thresholds(enum fi_hmem_iface iface)
 }
 
 /**
- * @brief Check whether an EC2 instance type supports GPUDirect RDMA
+ * @brief Check whether an EC2 instance type is known not to support GPUDirect
+ * RDMA
  *
  * @param[in]	instance_type	EC2 instance type, e.g. "p5.48xlarge"
  *
- * @return	false if the instance type is known not to support GPUDirect
- *		RDMA, true otherwise
+ * @return	true if the instance type is known not to support GPUDirect
+ *		RDMA, false otherwise (including unknown instance types)
  */
-bool efa_instance_type_supports_gdr(const char *instance_type)
+bool efa_instance_type_gdr_unsupported(const char *instance_type)
 {
 	/*
 	 * EC2 instance types with EFA and NVIDIA GPUs that do not support
@@ -202,10 +203,10 @@ bool efa_instance_type_supports_gdr(const char *instance_type)
 	};
 	for (size_t i = 0; i < ARRAY_SIZE(unsupported); i++) {
 		if (!strcmp(instance_type, unsupported[i]))
-			return false;
+			return true;
 	}
 
-	return true;
+	return false;
 }
 
 #if HAVE_CUDA
@@ -266,7 +267,7 @@ static inline void efa_hmem_info_check_p2p_support_cuda(struct efa_hmem_info *in
 		info->p2p_supported_by_device = true;
 	} else {
 		info->p2p_supported_by_device =
-			efa_instance_type_supports_gdr(instance_type);
+			!efa_instance_type_gdr_unsupported(instance_type);
 		EFA_INFO(FI_LOG_CORE, "Instance type %s %s CUDA P2P\n",
 			 instance_type,
 			 info->p2p_supported_by_device ? "supports" :

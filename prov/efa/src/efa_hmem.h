@@ -61,7 +61,7 @@ struct efa_hmem_info {
 
 extern struct efa_hmem_info	g_efa_hmem_info[OFI_HMEM_MAX];
 
-bool efa_instance_type_supports_gdr(const char *instance_type);
+bool efa_instance_type_gdr_unsupported(const char *instance_type);
 
 int efa_hmem_validate_p2p_opt(enum fi_hmem_iface iface, int p2p_opt, uint32_t api_version);
 int efa_hmem_info_initialize();
