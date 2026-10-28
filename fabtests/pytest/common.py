@@ -651,7 +651,8 @@ class ClientServerTest:
                 efa_device = efa.efa_common.get_efa_device_name_for_cuda_device(host_ip, hmem_device_id, num_hmem)
             elif host_memory_type == "neuron":
                 efa_device = efa.efa_common.get_efa_device_name_for_neuron_core(
-                    host_ip, neuron_core_id, self._cmdline_args.binpath)
+                    host_ip, neuron_core_id, self._cmdline_args.binpath,
+                    self._cmdline_args.environments)
             else:
                 efa_device = efa.efa_common.get_efa_device_name_for_hmem_device(host_ip, hmem_device_id, num_hmem)
             command += " -d {}-rdm".format(efa_device)

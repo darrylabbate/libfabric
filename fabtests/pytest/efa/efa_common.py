@@ -185,7 +185,7 @@ def get_neuron_ls_output(ip):
 
 @functools.lru_cache(maxsize=None)
 @retry(retry_on_exception=is_ssh_connection_error, stop_max_attempt_number=3, wait_fixed=5000)
-def get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath=None):
+def get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath=None, environments=None):
     """
     Return the PCI BDF of the EFA NIC wired to the neuron device that owns the
     given core, by running the neuron_efa_bdf helper on the remote host.
@@ -204,8 +204,8 @@ def get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath=None):
         picks.append("test -x '{0}' && echo '{0}'".format(built))
     picks.append("command -v {0}".format(NEURON_EFA_BDF_HELPER))
     resolve = " || ".join(picks)
-    remote = 'h="$({resolve})"; [ -n "$h" ] && NEURON_RT_VISIBLE_CORES={core} "$h" 0'.format(
-        resolve=resolve, core=core)
+    remote = 'h="$({resolve})"; [ -n "$h" ] && {env} NEURON_RT_VISIBLE_CORES={core} "$h" 0'.format(
+        resolve=resolve, env=environments or "", core=core)
     proc = subprocess.run("ssh {} '{}'".format(ip, remote), shell=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           encoding="utf-8", timeout=60)
@@ -217,7 +217,7 @@ def get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath=None):
     return bdf or None
 
 
-def get_efa_device_name_for_neuron_core(ip, neuron_core_id, binpath=None):
+def get_efa_device_name_for_neuron_core(ip, neuron_core_id, binpath=None, environments=None):
     """
     Return the rdma-core device name of the EFA NIC physically wired to the
     neuron device that owns neuron_core_id.
@@ -227,7 +227,7 @@ def get_efa_device_name_for_neuron_core(ip, neuron_core_id, binpath=None):
     because the only sound alternative to the true NIC is to not run: a wrong
     NIC has no path to the chip's memory and the op hangs to the test timeout.
     """
-    bdf = get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath)
+    bdf = get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath, environments)
     if bdf is None:
         pytest.skip(
             "cannot determine sidelink EFA NIC for neuron core {} on {}: the "
