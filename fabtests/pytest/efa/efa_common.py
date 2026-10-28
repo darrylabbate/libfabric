@@ -204,7 +204,8 @@ def get_sidelink_efa_bdf_for_neuron_core(ip, neuron_core_id, binpath=None):
         picks.append("test -x '{0}' && echo '{0}'".format(built))
     picks.append("command -v {0}".format(NEURON_EFA_BDF_HELPER))
     resolve = " || ".join(picks)
-    remote = 'h="$({resolve})"; [ -n "$h" ] && "$h" {core}'.format(resolve=resolve, core=core)
+    remote = 'h="$({resolve})"; [ -n "$h" ] && NEURON_RT_VISIBLE_CORES={core} "$h" 0'.format(
+        resolve=resolve, core=core)
     proc = subprocess.run("ssh {} '{}'".format(ip, remote), shell=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           encoding="utf-8", timeout=60)
